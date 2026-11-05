@@ -1,0 +1,5 @@
+# Mantém LF no repositório e nos containers, mesmo com checkout no Windows
+* text=auto eol=lf
+*.pdf binary
+*.png binary
+*.jpg binary
