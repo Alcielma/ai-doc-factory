@@ -22,12 +22,13 @@ def sem_rede(monkeypatch, tmp_path):
 @pytest.fixture(autouse=True)
 def extracoes(monkeypatch):
     """Não enfileira extração de verdade (o worker do compose chamaria o Gemini). Devolve os ids pedidos."""
-    from app import api, extracao
+    from app import extracao
+    from app.routers.revisao import actions as revisao_actions
     pedidas = []
 
     def registrar(documento_id, r=None):
         pedidas.append(documento_id)
     registrar.__wrapped__ = extracao.enfileirar_extracao  # a função real, para testá-la
     monkeypatch.setattr(extracao, "enfileirar_extracao", registrar)
-    monkeypatch.setattr(api, "enfileirar_extracao", registrar)
+    monkeypatch.setattr(revisao_actions, "enfileirar_extracao", registrar)
     return pedidas

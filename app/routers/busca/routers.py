@@ -1,0 +1,12 @@
+from fastapi import APIRouter, Query
+
+from app.routers.busca import actions
+from app.routers.busca.validations import validar_consulta
+
+router = APIRouter()
+
+
+@router.get("/busca")
+def busca(q: str = Query(""), limite: int = Query(20, ge=1, le=100)):
+    validar_consulta(q)
+    return actions.buscar(q, limite)

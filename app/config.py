@@ -57,3 +57,6 @@ LLM_ESPERA = float(os.getenv("LLM_ESPERA", "1.5"))  # segundos; dobra a cada nov
 GEMINI_ANALISE_MODEL = os.getenv("GEMINI_ANALISE_MODEL", "gemini-3.5-flash")
 PONTO_MAX_PAGINAS = int(os.getenv("PONTO_MAX_PAGINAS", "6"))  # páginas (imagens) enviadas ao Gemini
 PONTO_TEXTO_MAX = int(os.getenv("PONTO_TEXTO_MAX", "20000"))  # caracteres de OCR enviados
+
+# CORS: origens permitidas, separadas por vírgula (padrão: dev server do Vite). Nunca "*" com credenciais.
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if o.strip()]

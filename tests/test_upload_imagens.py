@@ -11,6 +11,7 @@ from pdf2image import convert_from_bytes
 from PIL import Image, ImageDraw
 
 from app import api, config
+from app.routers.lotes import actions as lotes_actions
 from app.imagem import ArquivoInvalido, imagem_para_pdf
 
 
@@ -97,7 +98,7 @@ def test_imagem_gigante_e_rejeitada(monkeypatch):
 
 @pytest.fixture
 def cliente(monkeypatch):
-    monkeypatch.setattr(api, "enfileirar", lambda *a, **k: None)  # os workers não devem pegar estes lotes
+    monkeypatch.setattr(lotes_actions, "enfileirar", lambda *a, **k: None)  # os workers não devem pegar estes lotes
     criados = []
     yield TestClient(api.app), criados
     with psycopg.connect(config.DATABASE_URL, autocommit=True) as conn:
