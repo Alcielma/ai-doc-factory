@@ -11,6 +11,10 @@ TIPOS = (
     "contrato_trabalho",
 )
 
+# Tipo atribuído quando a confiança fica abaixo de CONF_MIN. Fica fora de TIPOS de propósito:
+# não é uma classe válida para a correção humana.
+TIPO_DESCONHECIDO = "desconhecido"
+
 CONF_AUTO = float(os.getenv("CONF_AUTO", "0.85"))
 CONF_MIN = float(os.getenv("CONF_MIN", "0.50"))
 

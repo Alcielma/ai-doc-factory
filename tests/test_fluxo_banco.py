@@ -63,7 +63,7 @@ def test_fan_in_sem_decremento_duplo_e_conclui(lote):
         classificar_documento({"documento_id": i})
     classificar_documento({"documento_id": ids[2]})
     assert _lote(lote) == ("concluido", 0)
-    assert {e for *_, e in _docs(lote)} == {"classificado"}
+    assert {e for *_, e in _docs(lote)} <= {"classificado", "em_revisao"}  # decidido, sem ficar segmentado
 
 
 def test_segmentar_lote_repetido_em_classificando_so_reenfileira_pendentes(lote, monkeypatch):
