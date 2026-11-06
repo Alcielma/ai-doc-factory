@@ -77,6 +77,31 @@ INSERT INTO perfil_jornada (perfil, parametro, valor, unidade, base_legal) VALUE
     ('clt_padrao', 'hora_noturna_min',             52.5, 'min', 'CLT art. 73, § 1º'),
     ('clt_padrao', 'adicional_noturno_pct',        20,   'pct', 'CLT art. 73');
 
+-- Resultado da análise de risco da folha de ponto (Goal 6): uma linha por documento; reprocessar substitui.
+CREATE TABLE analise_ponto (
+    documento_id    BIGINT PRIMARY KEY REFERENCES documento(id) ON DELETE CASCADE,
+    estado          TEXT NOT NULL CHECK (estado IN ('concluida', 'erro')),
+    erro            TEXT,
+    perfil          JSONB,                             -- perfil de jornada usado (valor e base legal)
+    marcacoes       JSONB,                             -- como extraídas pelo Gemini
+    intervalo_pre_assinalado BOOLEAN,
+    totais          JSONB,                             -- minutos apurados pelo código
+    divergencias    JSONB,                             -- do código (valem estas)
+    diferencas_gemini JSONB,                           -- onde o Gemini divergiu do código
+    ponto_britanico JSONB,                             -- sinal de risco, não prova
+    analise         TEXT,                              -- análise breve do Gemini (texto não confiável)
+    contagens       JSONB,                             -- contagens calculadas pelo código e enviadas ao Jev
+    scores_dimensao JSONB,                             -- por dimensão: score, n_niveis, confianca, probabilidades
+    score_geral     DOUBLE PRECISION,                  -- máximo das dimensões normalizadas (0 a 1); NULL se nenhuma determinada
+    requer_revisao  BOOLEAN NOT NULL DEFAULT false,    -- alguma dimensão indeterminada (não altera documento.estado)
+    modelo_gemini   TEXT,
+    modelo_jev      TEXT,
+    versao_prompt_gemini TEXT,
+    versao_prompt_jev TEXT,
+    custo           JSONB,                             -- usage do Jev e do Gemini
+    atualizado_em   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Campos extraídos de cada documento (Goal 7). Um valor por (documento, campo); upsert.
 CREATE TABLE documento_campos (
     documento_id    BIGINT NOT NULL REFERENCES documento(id) ON DELETE CASCADE,

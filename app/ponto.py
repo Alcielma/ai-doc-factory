@@ -20,8 +20,16 @@ CONFIG_PONTO = {
     "britanico_variacao_max_min": 5,   # variação máxima (máx - mín) por marcação para considerar "uniforme"
     "britanico_min_dias": 10,          # abaixo disso, não conclui
     "britanico_fracao_min_dias": 0.9,  # fração de dias "uniformes" a partir da qual há sinal (não calibrado)
+    "falta_intervalo_pequena_max_min": 10,  # faltas de intervalo até este valor contam como "pequenas" para o Jev
+    "total_declarado_tolerancia_min": 0,  # diferença aceita entre o total declarado na folha e o recalculado
     "conf_min_dimensao": 0.5,          # confiança mínima do Jev por dimensão no score
 }
+
+# Vocabulário único de tipos de divergência (o Gemini é instruído a usar exatamente estes nomes).
+TIPOS_DIVERGENCIA = (
+    "horas_extras_acima_limite", "semana_acima_limite", "intervalo_intrajornada_insuficiente",
+    "interjornada_insuficiente", "descanso_semanal_ausente", "marcacao_invalida", "total_declarado_divergente",
+)
 
 BASE_LEGAL_REGISTRO = "CLT art. 74; Portaria MTP 671/2021"
 
@@ -118,7 +126,8 @@ def _noturno_real(pares, ini_min, fim_min):
 
 # ---------------------------------------------------------------- apuração
 
-def apurar_folha(marcacoes, perfil, previstos=None, intervalo_pre_assinalado=False):
+def apurar_folha(marcacoes, perfil, previstos=None, intervalo_pre_assinalado=False, horario_contratual=None,
+                 totais_declarados=None):
     """Apura minutos e divergências. Devolve {"dias": [...], "totais": {...}, "divergencias": [...]}.
 
     previstos (opcional): {"2025-11-03": ["08:00", "12:00", ...]} com os horários contratuais, na ordem
@@ -128,15 +137,38 @@ def apurar_folha(marcacoes, perfil, previstos=None, intervalo_pre_assinalado=Fal
     (redação dada pela Lei 13.874/2019, conferida pelo resumo do texto do Planalto). Quando verdadeiro,
     um dia com um único par de marcações NÃO gera intervalo_intrajornada_insuficiente, porque o intervalo
     não foi registrado e não dá para verificá-lo; esses dias saem em "intervalos_nao_verificados".
+
+    horario_contratual (opcional): lista de pares [["09:00","13:00"],["14:00","18:00"]] lida da folha. Vira o
+    previsto de cada dia com o MESMO número de marcações (previstos explícito por data tem prioridade). Nos demais
+    dias vale só o teto diário; o resultado registra isso em "tolerancia_por_marcacao".
+
+    totais_declarados (opcional): {"total_horas_min": n|None, "horas_extras_min": n|None} como declarado na folha.
+    Compara com o recalculado SEM tolerância (extras_bruto_min) e gera total_declarado_divergente se a diferença
+    passar de CONFIG_PONTO["total_declarado_tolerancia_min"]. Diferença só em relação ao valor COM tolerância
+    não é divergência (a tolerância explica); os dois valores ficam em totais.declarados.
     """
     p = {k: v["valor"] for k, v in perfil.items()}
     base = {k: v["base_legal"] for k, v in perfil.items()}
     previstos = previstos or {}
     divs, dias, nao_verificados = [], {}, []
+    contrato, motivo_contrato = None, "sem_horario_contratual"
+    if horario_contratual:
+        try:
+            if not all(isinstance(par, (list, tuple)) and len(par) == 2 for par in horario_contratual):
+                raise _Invalida("formato")
+            contrato = [h for par in horario_contratual for h in par]
+            [_marca(date(2000, 1, 3), h) for h in contrato]  # valida o formato dos horários
+            motivo_contrato = None
+        except _Invalida:
+            contrato, motivo_contrato = None, "horario_contratual_ilegivel"
+    dias_com_previsto = dias_sem_previsto = 0
 
-    def div(tipo, dia, minutos, base_legal, detalhe=""):
-        divs.append({"tipo": tipo, "data": dia.isoformat(), "minutos": minutos,
-                     "base_legal": base_legal, "detalhe": detalhe})
+    def div(tipo, dia, minutos, base_legal, detalhe="", campo=None):
+        d = {"tipo": tipo, "data": dia.isoformat() if dia else None, "minutos": minutos,
+             "base_legal": base_legal, "detalhe": detalhe}
+        if campo:
+            d["campo"] = campo
+        divs.append(d)
 
     for item in marcacoes:
         try:
@@ -162,8 +194,13 @@ def apurar_folha(marcacoes, perfil, previstos=None, intervalo_pre_assinalado=Fal
         # ultrapassado o limite, conta o excesso INTEIRO, não só o que passa de 10 min.
         # Sem horários previstos não dá para medir a variação por marcação, então só o teto diário é aplicado.
         dentro = 0 < bruto <= p["tolerancia_dia_min"]
-        prev = previstos.get(dia.isoformat())
+        prev = previstos.get(dia.isoformat()) or contrato
         flat = [m for par in pares for m in par]
+        if flat:
+            if isinstance(prev, (list, tuple)) and len(prev) == len(flat):
+                dias_com_previsto += 1
+            else:
+                dias_sem_previsto += 1
         if dentro and isinstance(prev, (list, tuple)) and len(prev) == len(flat):
             try:
                 alvo = [_marca(dia, h) for h in prev]
@@ -175,6 +212,7 @@ def apurar_folha(marcacoes, perfil, previstos=None, intervalo_pre_assinalado=Fal
         noturno = _noturno_real(pares, p["noturno_inicio_min"], p["noturno_fim_min"])
         dias[dia] = {
             "data": dia.isoformat(), "pares": pares, "trabalhado_min": trabalhado, "extras_min": extras,
+            "extras_bruto_min": max(0.0, bruto),
             "intervalo_min": intervalo, "noturno_real_min": noturno,
             # hora noturna reduzida: cada 52min30s reais contam como 60 min
             "noturno_computado_min": round(noturno / p["hora_noturna_min"] * 60, 2),
@@ -223,9 +261,11 @@ def apurar_folha(marcacoes, perfil, previstos=None, intervalo_pre_assinalado=Fal
     # (dia de folga = data presente com pares vazios). Maior intervalo sem trabalho dentro da janela
     # segunda 00:00 -> segunda seguinte 00:00; descanso que atravessa a semana é cortado na borda
     # (limitação conhecida). Não verifica se o descanso cai no domingo.
+    avaliadas = 0
     for seg, ds in sorted(semanas.items()):
         if len(ds) < 7:
             continue
+        avaliadas += 1
         ini = datetime.combine(seg, time())
         fim = ini + timedelta(days=7)
         spans = sorted(s for d in ds for s in d["pares"])
@@ -241,17 +281,48 @@ def apurar_folha(marcacoes, perfil, previstos=None, intervalo_pre_assinalado=Fal
     lista = [dias[k] for k in sorted(dias)]
     for d in lista:
         d.pop("pares")
+    extras_bruto = sum(d["extras_bruto_min"] for d in lista)
+    extras_tol = sum(d["extras_min"] for d in lista)
+    trabalhado_total = sum(d["trabalhado_min"] for d in lista)
+    decl = totais_declarados if isinstance(totais_declarados, dict) else {}
+    invalidos = sum(1 for x in divs if x["tipo"] == "marcacao_invalida")
+    declarados = {"total_horas_min": None, "horas_extras_min": None, "comparado": False,
+                  "extras_bruto_min": extras_bruto, "extras_min_com_tolerancia": extras_tol,
+                  "extras_declarado_igual_ao_bruto": None, "extras_declarado_igual_ao_com_tolerancia": None}
+    tol_decl = CONFIG_PONTO["total_declarado_tolerancia_min"]
+    for campo, chave, calculado in (("total_horas", "total_horas_min", trabalhado_total),
+                                    ("horas_extras", "horas_extras_min", extras_bruto)):
+        v = decl.get(chave)
+        v = v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+        declarados[chave] = v
+        if v is None or invalidos:  # sem declarado, ou dias inválidos tornam o recalculado um mínimo
+            continue
+        declarados["comparado"] = True
+        if abs(v - calculado) > tol_decl:
+            div("total_declarado_divergente", None, abs(v - calculado), BASE_LEGAL_REGISTRO,
+                f"{campo}: declarado {v:g} min, recalculado {calculado:g} min", campo=campo)
+    if declarados["horas_extras_min"] is not None and not invalidos:
+        declarados["extras_declarado_igual_ao_bruto"] = abs(declarados["horas_extras_min"] - extras_bruto) <= tol_decl
+        declarados["extras_declarado_igual_ao_com_tolerancia"] = (
+            abs(declarados["horas_extras_min"] - extras_tol) <= tol_decl)
     totais = {
-        "trabalhado_min": sum(d["trabalhado_min"] for d in lista),
-        "extras_min": sum(d["extras_min"] for d in lista),
+        "trabalhado_min": trabalhado_total,
+        "extras_min": extras_tol,
+        "extras_bruto_min": extras_bruto,
         "noturno_real_min": sum(d["noturno_real_min"] for d in lista),
         "noturno_computado_min": round(sum(d["noturno_computado_min"] for d in lista), 2),
         "dias_validos": len(lista),
-        "dias_invalidos": sum(1 for x in divs if x["tipo"] == "marcacao_invalida"),
+        "dias_invalidos": invalidos,
     }
     return {"dias": lista, "totais": totais, "divergencias": divs,
             "intervalo_pre_assinalado": bool(intervalo_pre_assinalado),
-            "intervalos_nao_verificados": nao_verificados}
+            "intervalos_nao_verificados": nao_verificados, "semanas_avaliadas_descanso": avaliadas,
+            "tolerancia_por_marcacao": {
+                "aplicada": dias_com_previsto > 0, "dias_com_horario_previsto": dias_com_previsto,
+                "dias_sem_horario_previsto": dias_sem_previsto,
+                "motivo_nao_aplicada": None if dias_com_previsto else (
+                    motivo_contrato or "numero_de_marcacoes_diferente_do_horario_contratual")},
+            "horario_contratual": horario_contratual or [], "declarados": declarados}
 
 
 # ---------------------------------------------------------------- ponto britânico
@@ -303,10 +374,10 @@ def comparar_com_gemini(apurado, divergencias_gemini):
     vocabulário do código (garantido pelo prompt, fora deste módulo).
     """
     divs = apurado["divergencias"] if isinstance(apurado, dict) else apurado
-    cod = {(d["tipo"], d["data"]): d for d in divs}
-    gem = {(d.get("tipo"), d.get("data")): d for d in divergencias_gemini or []}
+    cod = {(d["tipo"], d["data"], d.get("campo")): d for d in divs}
+    gem = {(d.get("tipo"), d.get("data"), None): d for d in divergencias_gemini or []}
     diferencas = []
-    for chave in sorted(set(cod) | set(gem), key=lambda k: (str(k[1]), str(k[0]))):
+    for chave in sorted(set(cod) | set(gem), key=lambda k: (str(k[1]), str(k[0]), str(k[2]))):
         c, g = cod.get(chave), gem.get(chave)
         mc = c["minutos"] if c else None
         mg = g.get("minutos") if g else None
@@ -318,7 +389,7 @@ def comparar_com_gemini(apurado, divergencias_gemini):
             motivo = "minutos_diferentes"
         else:
             continue
-        diferencas.append({"tipo": chave[0], "data": chave[1], "minutos_codigo": mc,
+        diferencas.append({"tipo": chave[0], "data": chave[1], "campo": chave[2], "minutos_codigo": mc,
                            "minutos_gemini": mg, "motivo": motivo})
     return {"divergencias": list(divs), "diferencas": diferencas}
 
@@ -347,3 +418,57 @@ def score_geral(respostas_jev, conf_min=None):
     indeterminadas = [k for k, v in dims.items() if v["indeterminada"]]
     return {"score_geral": max(normalizados) if normalizados else None, "dimensoes": dims,
             "indeterminadas": indeterminadas, "requer_revisao": bool(indeterminadas) or not dims}
+
+
+# ---------------------------------------------------------------- contagens para o Jev
+
+def resumir_contagens(apuracao, britanico):
+    """Contagens por dimensão, TODAS calculadas aqui: o Jev só julga a situação, não conta."""
+    divs = apuracao["divergencias"]
+
+    def de(tipo):
+        return [d for d in divs if d["tipo"] == tipo]
+
+    def maior(lista):
+        return max((d["minutos"] for d in lista), default=0)
+
+    pequena = CONFIG_PONTO["falta_intervalo_pequena_max_min"]
+    validos = len(apuracao["dias"])
+    invalidos = apuracao["totais"]["dias_invalidos"]
+    extras, semanas = de("horas_extras_acima_limite"), de("semana_acima_limite")
+    intra, inter = de("intervalo_intrajornada_insuficiente"), de("interjornada_insuficiente")
+    sem_descanso = de("descanso_semanal_ausente")
+    total_div = de("total_declarado_divergente")
+    decl_inf = [k for k in ("total_horas_min", "horas_extras_min") if apuracao["declarados"][k] is not None]
+    if britanico.get("sinal_risco") is None:
+        sinal = "inconclusivo"
+    else:
+        sinal = "sinal_de_ponto_britanico" if britanico["sinal_risco"] else "sem_sinal"
+    return {
+        "horas_extras": {
+            "dias_analisados": validos, "dias_acima_do_limite_diario": len(extras),
+            "fracao_dos_dias_acima_do_limite": round(len(extras) / validos, 2) if validos else 0,
+            "maior_excesso_diario_min": maior(extras), "semanas_acima_de_44h": len(semanas),
+            "total_horas_extras_min": apuracao["totais"]["extras_min"],
+        },
+        "intervalos": {
+            "dias_analisados": validos, "dias_com_intervalo_intrajornada_insuficiente": len(intra),
+            "maior_falta_de_intervalo_min": maior(intra),
+            "dias_com_falta_de_intervalo_pequena": sum(d["minutos"] <= pequena for d in intra),
+            "dias_com_falta_de_intervalo_maior": sum(d["minutos"] > pequena for d in intra),
+            "limite_da_falta_pequena_min": pequena,
+            "dias_com_interjornada_menor_que_11h": len(inter), "maior_falta_de_interjornada_min": maior(inter),
+            "dias_com_intervalo_nao_verificado": len(apuracao.get("intervalos_nao_verificados", [])),
+        },
+        "descanso": {
+            "semanas_completas_avaliadas": apuracao.get("semanas_avaliadas_descanso", 0),
+            "semanas_sem_descanso_de_24h": len(sem_descanso), "maior_falta_de_descanso_min": maior(sem_descanso),
+        },
+        "registro": {
+            "dias_com_marcacao_valida": validos, "dias_com_marcacao_invalida": invalidos,
+            "ponto_britanico": sinal, "fracao_de_dias_com_horario_uniforme": britanico.get("fracao_uniforme"),
+            "totais_declarados_informados": bool(decl_inf),
+            "totais_declarados_divergentes": len(total_div),
+            "maior_diferenca_do_total_declarado_min": maior(total_div),
+        },
+    }

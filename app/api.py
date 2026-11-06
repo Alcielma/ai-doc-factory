@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, field_validator
 
 from app import conformidade, config
+from app.analise import enfileirar_analise
 from app.extracao import enfileirar_extracao
 from app.filas import enfileirar
 from app.imagem import ArquivoInvalido, imagem_para_pdf
@@ -175,9 +176,33 @@ def revisar_documento(documento_id: int, revisao: Revisao):
             if estado is None:
                 raise HTTPException(404, "documento não encontrado")
             raise HTTPException(409, f"documento em estado '{estado[0]}' não aceita revisão")
+    if revisao.tipo == "folha_ponto":
+        enfileirar_analise(documento_id, r)  # nunca levanta: não derruba a revisão
     enfileirar_extracao(documento_id, r)  # depois do commit; nunca levanta
     return {"id": row[0], "estado": row[1], "tipo": row[2], "tipo_original": row[3],
             "revisor": row[4], "revisado_em": row[5]}
+
+
+_COLUNAS_ANALISE = ("estado", "erro", "perfil", "marcacoes", "intervalo_pre_assinalado", "totais", "divergencias",
+                    "diferencas_gemini", "ponto_britanico", "analise", "contagens", "scores_dimensao", "score_geral",
+                    "requer_revisao", "modelo_gemini", "modelo_jev", "versao_prompt_gemini", "versao_prompt_jev",
+                    "custo", "atualizado_em")
+
+
+@app.get("/documentos/{documento_id}/analise-ponto")
+def analise_ponto(documento_id: int):
+    """Apoio à auditoria, não parecer jurídico; convenção coletiva e acordo de compensação podem alterar os limites."""
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        doc = conn.execute("SELECT tipo FROM documento WHERE id = %s", (documento_id,)).fetchone()
+        if doc is None:
+            raise HTTPException(404, "documento não encontrado")
+        row = conn.execute(f"SELECT {', '.join(_COLUNAS_ANALISE)} FROM analise_ponto WHERE documento_id = %s",
+                           (documento_id,)).fetchone()
+    if row is None:
+        if doc[0] == "folha_ponto":
+            return {"documento_id": documento_id, "estado": "pendente"}
+        raise HTTPException(404, "documento não é uma folha de ponto analisada")
+    return {"documento_id": documento_id, **dict(zip(_COLUNAS_ANALISE, row))}
 
 
 @app.get("/lotes/{lote_id}/paginas/{numero}/imagem")
