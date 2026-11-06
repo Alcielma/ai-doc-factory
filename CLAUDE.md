@@ -59,6 +59,8 @@ A lista fica em configuração, em um único lugar, nunca espalhada pelo código
 
 - **Jev:** classificador principal, só texto, via OpenRouter (`OPENROUTER_API_KEY`, `JEV_MODEL`). Devolve escolha, confiança e probabilidades por opção. **Antes de implementar, faça uma chamada de teste e confirme o formato real da resposta.** Se não houver confiança utilizável, avise e proponha alternativa em vez de inventar.
 - **Gemini:** segunda opinião (Google AI Studio, `GEMINI_API_KEY`), com a imagem da primeira página, usado só quando a confiança do Jev for baixa. A confiança autodeclarada do Gemini **não** entra na regra de decisão.
+- **Gemini na análise de folha de ponto (Goal 6):** modelo em `GEMINI_ANALISE_MODEL`, padrão `gemini-3.5-flash`. A documentação do Gemini indica esse ID como obsoleto e redirecionado para um modelo mais novo, então registre o modelo realmente devolvido pela API.
+- **Jev no score de risco (Goal 6):** usa o tipo `Score` do Jev. Confirme o formato real da resposta em uma chamada de teste, como no classificador.
 - Toda decisão de confiança (limiares, roteamento) é feita em código determinístico, não pelo LLM.
 - Cache em disco das respostas dos LLMs, com chave = hash da entrada + modelo + prompt, para a demo não depender de rede.
 - Em cada classificação, guarde o modelo usado, a versão do prompt e as probabilidades.
@@ -77,8 +79,9 @@ Os dados sintéticos são otimistas. O README deve registrar que a validação e
 2. Goal 4 (OCR) e Goal 1 (segmentação com regras e TF-IDF), ponta a ponta, sem LLM.
 3. Goal 3 com um classificador simples para fechar o fluxo, depois trocar por Jev + Gemini.
 4. Goal 5 (roteamento e revisão) e script de avaliação com números reais.
-5. Goal 2 (refinamentos de agrupamento/correção) e UI Streamlit.
-6. README com como rodar, arquitetura, resultados medidos e limitações.
+5. Goal 6 (análise de risco das folhas de ponto).
+6. Goal 2 (refinamentos de agrupamento/correção). **Por enquanto, só backend:** não implemente a UI Streamlit nem o serviço `ui` até nova decisão.
+7. README com como rodar, arquitetura, resultados medidos e limitações.
 
 ## Goals
 
@@ -136,3 +139,33 @@ Demais entregas:
 - Escolher os limiares pela curva cobertura x precisão nos dados de validação e reportar % automático, precisão na parte automática e % em revisão.
 
 **Aceite:** documentos de baixa confiança aparecem na fila, a correção humana muda o status para `revisado` e o relatório de cobertura x precisão é gerado por script.
+
+### Goal 6: Análise de risco das folhas de ponto
+
+Para documentos do tipo `folha_ponto`, encontrar divergências, com foco principal em horas extras, e gerar um score de risco com base na CLT e na Portaria MTP nº 671/2021.
+
+**Perfil padrão:** tabela `perfil_jornada`, criada com um perfil CLT de referência. Cada parâmetro guarda o valor e a base legal. Confira os valores no texto oficial da CLT e da Portaria antes de usar:
+
+| Parâmetro | Referência |
+|---|---|
+| Jornada diária de 8h e semanal de 44h | CF art. 7º, XIII; CLT art. 58 |
+| Tolerância de 5 min por marcação, até 10 min por dia | CLT art. 58, § 1º |
+| Até 2h extras por dia | CLT art. 59 |
+| Adicional mínimo de 50% sobre a hora extra | CF art. 7º, XVI |
+| Intervalo interjornada de 11h | CLT art. 66 |
+| Descanso semanal de 24h | CLT art. 67 |
+| Intervalo intrajornada: 1h acima de 6h de jornada; 15 min entre 4h e 6h | CLT art. 71 |
+| Noturno das 22h às 5h, adicional de 20%, hora de 52min30s | CLT art. 73 |
+| Requisitos do registro de ponto e do espelho | CLT art. 74; Portaria MTP 671/2021 |
+
+**Fluxo:**
+
+1. Documento que termina como `folha_ponto`, inclusive por correção humana, entra na fila `analisar_folha_ponto` (payload `{documento_id}`), consumida pelo serviço `worker_analise`. A análise não participa do fan-in do lote.
+2. O Gemini recebe o texto do OCR e o perfil padrão e devolve em JSON as divergências (tipo, data, minutos, base legal, trecho de evidência) e uma análise breve.
+3. O Jev recebe a análise e as divergências e devolve o score de risco com as probabilidades por nível.
+4. Persistir em `analise_ponto`, uma linha por documento (reprocessar substitui, sem duplicar): perfil usado, divergências, análise, score, probabilidades, modelos e versões dos prompts.
+5. `GET /documentos/{id}/analise-ponto` devolve o resultado.
+
+O score é apoio à auditoria, não parecer jurídico. A convenção coletiva e o acordo de compensação podem alterar os limites do perfil padrão. O README deve registrar as duas ressalvas.
+
+**Aceite:** uma folha de ponto com horas extras acima do limite gera divergências com data, minutos e base legal, além do score; uma folha regular gera score menor. Não reporte métrica de acurácia sem um gabarito de divergências.
