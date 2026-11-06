@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Loader2, LogIn } from 'lucide-react'
+import { Loader2, LogIn, Eye, EyeOff } from 'lucide-react'
 import { login } from '../services/api'
 
 interface LoginPageProps {
@@ -9,6 +9,7 @@ interface LoginPageProps {
 const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
   const [usuario, setUsuario] = useState('')
   const [senha, setSenha] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -67,15 +68,26 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
           <label htmlFor="senha" className="text-xs font-semibold text-[#6e6378] dark:text-[#a093a8]">
             Senha
           </label>
-          <input
-            id="senha"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-            className={inputClass}
-          />
+          <div className="relative">
+            <input
+              id="senha"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              required
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+              className={`${inputClass} pr-10`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              tabIndex={-1}
+              aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-[#8f8298] dark:text-[#7f7188] hover:text-[#2d0a33] dark:hover:text-[#f5edf9] transition-colors cursor-pointer"
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
 
         {error && (
