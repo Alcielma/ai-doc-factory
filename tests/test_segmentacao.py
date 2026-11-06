@@ -101,3 +101,100 @@ def test_paginacao_ruido_e_valores_impossiveis(texto, esperado):
 def test_segmentar_nao_lanca_com_pagina_i_de_2():
     docs = segmentar([f"{HOLERITE} Página i de 2", f"{HOLERITE} Página 2 de 2", f"{ATESTADO} Página 8 de 3"])
     assert docs[0].pagina_ini == 1 and docs[-1].pagina_fim == 3
+
+
+# --- página só com carimbo, CNPJ e mesma empresa ---
+
+def test_verso_so_com_carimbo_herda_o_documento_anterior():
+    textos = [f"{HOLERITE} Página 1 de 1", "PROTOCOLADO", f"{HOLERITE} outro Página 1 de 1"]
+    assert intervalos(segmentar(textos)) == [(1, 2), (3, 3)]
+    assert segmentacao.em_branco("PROTOCOLADO") and segmentacao.em_branco("  \n .")
+
+
+def test_carimbo_no_inicio_do_lote_e_absorvido_pelo_primeiro_documento():
+    assert intervalos(segmentar(["PROTOCOLADO", f"{HOLERITE} Página 1 de 1"])) == [(1, 2)]
+
+
+def test_pagina_curta_com_paginacao_ou_acima_do_limite_continua_sendo_documento():
+    assert not segmentacao.em_branco("Atestado Página 1 de 1")  # paginação é conteúdo de documento
+    assert not segmentacao.em_branco("ATESTADO MÉDICO ok")  # mais de 12 alfanuméricos
+    textos = [f"{HOLERITE} Página 1 de 1", "Atestado Página 1 de 1"]
+    assert intervalos(segmentar(textos)) == [(1, 1), (2, 2)]
+
+
+def test_limite_de_carimbo_vem_da_config(monkeypatch):
+    monkeypatch.setattr(segmentacao.config, "SEG_BRANCO_MAX_ALNUM", 0)
+    assert not segmentacao.em_branco("PROTOCOLADO")
+
+
+@pytest.mark.parametrize("texto,esperado", [
+    ("CUNHA CNPJ 43.182.607/0001-42 Rua x", "43182607000142"),
+    ("CNPJ 43182607000142", "43182607000142"),
+    ("ENPJ 43.182.607/0001-42", "43182607000142"),     # rótulo mal lido
+    ("CNPJ 43.182.607 /0001 - 42", "43182607000142"),  # espaços do OCR
+    ("CNPJ 43,182,607/0001-42", "43182607000142"),     # vírgulas no lugar de pontos
+    ("sem número, matrícula 71496 24782", None),
+    ("", None),
+])
+def test_cnpj_tolerante(texto, esperado):
+    assert segmentacao.cnpj(texto) == esperado
+
+
+def _cnpj_texto(cnpj, corpo):
+    return f"EMPRESA CNPJ {cnpj} {corpo}"
+
+
+def _forcar_baixa_similaridade(monkeypatch):
+    monkeypatch.setattr(segmentacao.config, "SEG_SIM_BAIXO", 0.99)  # toda similaridade sem paginação é "baixa"
+    monkeypatch.setattr(segmentacao.config, "SEG_SIM_ALTO", 1.1)
+
+
+def test_mesmo_cnpj_com_similaridade_baixa_pergunta_ao_jev(monkeypatch):
+    _forcar_baixa_similaridade(monkeypatch)
+    perguntas = []
+
+    def jev(a, b):
+        perguntas.append((a, b))
+        return True
+    monkeypatch.setattr(segmentacao, "perguntar_llm_mesmo_documento", jev)
+    textos = [_cnpj_texto("43.182.607/0001-42", "alpha beta gama"), _cnpj_texto("43.182.607/0001-42", "delta épsilon")]
+    assert intervalos(segmentar(textos)) == [(1, 2)] and len(perguntas) == 1
+    monkeypatch.setattr(segmentacao, "perguntar_llm_mesmo_documento", lambda a, b: False)
+    assert intervalos(segmentar(textos)) == [(1, 1), (2, 2)]
+    monkeypatch.setattr(segmentacao, "perguntar_llm_mesmo_documento", lambda a, b: None)  # sem resposta
+    docs = segmentar(textos)
+    assert intervalos(docs) == [(1, 1), (2, 2)] and docs[1].ambiguo
+
+
+def test_cnpj_diferente_abre_documento_sem_perguntar(monkeypatch):
+    _forcar_baixa_similaridade(monkeypatch)
+    monkeypatch.setattr(segmentacao.config, "SEG_SIM_ALTO", 0.9)
+    monkeypatch.setattr(segmentacao, "perguntar_llm_mesmo_documento", lambda a, b: pytest.fail("não deveria perguntar"))
+    textos = [_cnpj_texto("43.182.607/0001-42", "alpha beta gama"), _cnpj_texto("54.930.781/0001-42", "alpha beta gama")]
+    docs = segmentar(textos)
+    assert intervalos(docs) == [(1, 1), (2, 2)] and not docs[1].ambiguo
+
+
+def test_cnpj_diferente_com_paginacao_de_continuacao_continua(monkeypatch):
+    monkeypatch.setattr(segmentacao, "perguntar_llm_mesmo_documento", lambda a, b: pytest.fail("não deveria perguntar"))
+    textos = [_cnpj_texto("43.182.607/0001-42", "x Página 1 de 2"), _cnpj_texto("54.930.781/0001-42", "y Página 2 de 2")]
+    assert intervalos(segmentar(textos)) == [(1, 2)]
+
+
+def test_sem_cnpj_em_uma_das_paginas_mantem_o_comportamento_antigo(monkeypatch):
+    _forcar_baixa_similaridade(monkeypatch)
+    monkeypatch.setattr(segmentacao, "perguntar_llm_mesmo_documento", lambda a, b: pytest.fail("não deveria perguntar"))
+    textos = [_cnpj_texto("43.182.607/0001-42", "alpha beta"), "gama delta épsilon sem empresa"]
+    assert intervalos(segmentar(textos)) == [(1, 1), (2, 2)]  # similaridade baixa, CNPJ desconhecido: abre
+
+
+def test_documentos_consecutivos_da_mesma_empresa_separam_por_pagina_1_de_n_e_pelo_jev(monkeypatch):
+    _forcar_baixa_similaridade(monkeypatch)
+    c = "43.182.607/0001-42"
+    por_paginacao = [_cnpj_texto(c, "folha Página 1 de 2"), _cnpj_texto(c, "folha Página 2 de 2"),
+                     _cnpj_texto(c, "folha Página 1 de 1")]
+    monkeypatch.setattr(segmentacao, "perguntar_llm_mesmo_documento", lambda a, b: pytest.fail("paginação decide"))
+    assert intervalos(segmentar(por_paginacao)) == [(1, 2), (3, 3)]
+    sem_paginacao = [_cnpj_texto(c, "recibo de férias gozo"), _cnpj_texto(c, "atestado médico cid repouso")]
+    monkeypatch.setattr(segmentacao, "perguntar_llm_mesmo_documento", lambda a, b: False)  # o Jev separa
+    assert intervalos(segmentar(sem_paginacao)) == [(1, 1), (2, 2)]
