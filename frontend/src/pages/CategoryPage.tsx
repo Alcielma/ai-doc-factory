@@ -5,16 +5,15 @@ import {
   ChevronDown,
   FileText,
 } from 'lucide-react'
-// import { Download, Calendar } from 'lucide-react'
 import type { DocumentCategory, DetailedDocument } from '../types'
 
-interface CategoryViewProps {
+interface CategoryPageProps {
   category: DocumentCategory
   documents: DetailedDocument[]
   onBack: () => void
 }
 
-export const CategoryView: React.FC<CategoryViewProps> = ({
+const CategoryPage: React.FC<CategoryPageProps> = ({
   category,
   documents,
   onBack,
@@ -22,8 +21,6 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedPerson, setSelectedPerson] = useState('todas')
   const [selectedConfidence, setSelectedConfidence] = useState('todas')
-  // const [startDate, setStartDate] = useState('')
-  // const [endDate, setEndDate] = useState('')
   const [sortBy, setSortBy] = useState<'recentes' | 'antigos' | 'confianca'>('recentes')
 
   // Get unique person names for the dropdown
@@ -63,32 +60,6 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
     })
   }, [documents, searchTerm, selectedPerson, selectedConfidence])
 
-  /* Handle Export CSV (Comentado temporariamente)
-  const handleExportCSV = () => {
-    const headers = ['ID', 'Arquivo', 'Pessoa', 'Páginas', 'Data Processamento', 'Confiança']
-    const rows = filteredDocuments.map((doc) => [
-      doc.id,
-      doc.filename,
-      doc.personName,
-      doc.pages,
-      doc.processedDate,
-      `${Math.round(doc.confidence * 100)}%`,
-    ])
-
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n')
-
-    const encodedUri = encodeURI(csvContent)
-    const link = document.createElement('a')
-    link.setAttribute('href', encodedUri)
-    link.setAttribute('download', `${category.id}_documentos.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
-  */
-
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Breadcrumbs */}
@@ -117,17 +88,6 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Botão Exportar CSV (Comentado temporariamente)
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border border-[#e1d9e6] dark:border-[#35223e] bg-white dark:bg-[#1a1120] hover:bg-[#f8f5fa] dark:hover:bg-[#25162a] text-[#2d0a33] dark:text-[#eae0ee] shadow-2xs transition-colors cursor-pointer"
-          >
-            <Download className="w-4 h-4 text-[#8f8298] dark:text-[#a093a8]" />
-            <span>Exportar CSV</span>
-          </button>
-          */}
-
           <button
             type="button"
             onClick={onBack}
@@ -185,34 +145,6 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
             </select>
             <ChevronDown className="w-3.5 h-3.5 text-[#8f8298] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
-
-          {/* Date Range Inputs (Comentado temporariamente)
-          <div className="flex items-center gap-2 text-[#6e6378] dark:text-[#9f91a6]">
-            <span className="text-xs">De</span>
-            <div className="relative flex items-center">
-              <input
-                type="text"
-                placeholder="dd / mm / aaaa"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-32 pl-3 pr-7 py-1.5 text-xs rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] bg-white dark:bg-[#1a1120] text-[#2d0a33] dark:text-[#e4d6eb] placeholder-[#9f94a6] dark:placeholder-[#6e6074] focus:outline-none"
-              />
-              <Calendar className="w-3.5 h-3.5 text-[#8f8298] absolute right-2.5 pointer-events-none" />
-            </div>
-
-            <span className="text-xs">até</span>
-            <div className="relative flex items-center">
-              <input
-                type="text"
-                placeholder="dd / mm / aaaa"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-32 pl-3 pr-7 py-1.5 text-xs rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] bg-white dark:bg-[#1a1120] text-[#2d0a33] dark:text-[#e4d6eb] placeholder-[#9f94a6] dark:placeholder-[#6e6074] focus:outline-none"
-              />
-              <Calendar className="w-3.5 h-3.5 text-[#8f8298] absolute right-2.5 pointer-events-none" />
-            </div>
-          </div>
-          */}
         </div>
 
         {/* Sort Dropdown */}
@@ -303,3 +235,5 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
     </div>
   )
 }
+
+export default CategoryPage

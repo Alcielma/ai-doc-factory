@@ -18,8 +18,8 @@ export const Header: React.FC<HeaderProps> = ({
   isDark,
   onToggleTheme,
   onOpenUpload,
-  onOpenReview,
-  reviewCount,
+  //onOpenReview,
+  //reviewCount,
   activeTab,
   onSelectTab,
   // globalSearch,
@@ -70,6 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
               Documentos
             </button>
 
+            {/* 
             <button
               type="button"
               onClick={onOpenReview}
@@ -86,6 +87,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               )}
             </button>
+            */}
           </nav>
         </div>
 

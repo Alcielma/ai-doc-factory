@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { Check, X, Plus } from 'lucide-react'
 import type { ReviewPendingDocument } from '../types'
 
-interface ManualReviewViewProps {
+interface ManualReviewPageProps {
   documents: ReviewPendingDocument[]
   onBack: () => void
   onApprove: (docId: string, finalCategory: string, personName: string) => void
@@ -162,7 +162,7 @@ const ReviewDetailPanel: React.FC<DetailPanelProps> = ({
   )
 }
 
-export const ManualReviewView: React.FC<ManualReviewViewProps> = ({
+const ManualReviewPage: React.FC<ManualReviewPageProps> = ({
   documents,
   onBack,
   onApprove,
@@ -434,3 +434,5 @@ export const ManualReviewView: React.FC<ManualReviewViewProps> = ({
     </div>
   )
 }
+
+export default ManualReviewPage
