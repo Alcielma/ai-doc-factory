@@ -12,6 +12,7 @@ venv/
 /data/
 /cache/
 *.log
+*.joblib
 
 # Worktrees e estado local do Claude Code
 .claude/
