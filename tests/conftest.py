@@ -31,4 +31,6 @@ def extracoes(monkeypatch):
     registrar.__wrapped__ = extracao.enfileirar_extracao  # a função real, para testá-la
     monkeypatch.setattr(extracao, "enfileirar_extracao", registrar)
     monkeypatch.setattr(revisao_actions, "enfileirar_extracao", registrar)
+    from app.routers.documentos import actions as documentos_actions
+    monkeypatch.setattr(documentos_actions, "enfileirar_extracao", registrar)
     return pedidas
