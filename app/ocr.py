@@ -53,17 +53,25 @@ def _enfileirar_classificacao(ids: list[int]) -> None:
 
 
 def segmentar_e_gravar(lote_id: int) -> list[int]:
-    """Em uma única transação: recria os documentos do lote, vincula as páginas, define docs_pendentes
-    e muda o lote para 'classificando'. Devolve os ids dos documentos (vazio se outro worker já fez)."""
-    with psycopg.connect(config.DATABASE_URL) as conn:  # o with faz commit único ao sair
-        estado = conn.execute("SELECT estado FROM lote WHERE id = %s FOR UPDATE", (lote_id,)).fetchone()[0]
+    """Recria os documentos do lote, vincula as páginas, define docs_pendentes e muda o lote para
+    'classificando', em uma única transação. Devolve os ids dos documentos (vazio se outro worker já fez).
+
+    A segmentação (que pode chamar o LLM, ou seja, rede) roda ANTES da transação: o FOR UPDATE não pode
+    ficar preso durante chamada de rede. O estado é conferido de novo sob o lock."""
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        estado = conn.execute("SELECT estado FROM lote WHERE id = %s", (lote_id,)).fetchone()[0]
         if estado in ("classificando", "concluido"):
             return []
         textos = [t or "" for (t,) in conn.execute(
             "SELECT texto FROM pagina WHERE lote_id = %s ORDER BY numero", (lote_id,))]
+    docs = segmentar(textos)
+    with psycopg.connect(config.DATABASE_URL) as conn:  # o with faz commit único ao sair
+        estado = conn.execute("SELECT estado FROM lote WHERE id = %s FOR UPDATE", (lote_id,)).fetchone()[0]
+        if estado in ("classificando", "concluido"):
+            return []
         conn.execute("DELETE FROM documento WHERE lote_id = %s", (lote_id,))  # refazer não duplica
         ids = []
-        for ordem, d in enumerate(segmentar(textos), start=1):
+        for ordem, d in enumerate(docs, start=1):
             id_ = conn.execute(
                 "INSERT INTO documento (lote_id, ordem, pagina_ini, pagina_fim, segmentacao_ambigua) "
                 "VALUES (%s, %s, %s, %s, %s) RETURNING id",

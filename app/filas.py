@@ -23,8 +23,10 @@ def recuperar_presos(r: redis.Redis, fila: str) -> int:
     return n
 
 
-def processar_um(r: redis.Redis, fila: str, handler: Callable[[dict], None], timeout: int = 5) -> bool:
-    """Consome um job. Ack (remoção de :proc) só após sucesso. Retorna False se a fila estava vazia."""
+def processar_um(r: redis.Redis, fila: str, handler: Callable[[dict], None], timeout: int = 5,
+                 ao_esgotar: Callable[[dict], None] | None = None) -> bool:
+    """Consome um job. Ack (remoção de :proc) só após sucesso. Retorna False se a fila estava vazia.
+    ao_esgotar(payload), opcional, roda depois que o job foi para a dlq; se falhar, o job segue na dlq."""
     proc = f"{fila}:proc"
     bruto = r.blmove(fila, proc, timeout, "RIGHT", "LEFT")
     if bruto is None:
@@ -38,12 +40,18 @@ def processar_um(r: redis.Redis, fila: str, handler: Callable[[dict], None], tim
         log.exception("job falhou (tentativa %s/%s) -> %s", job["tentativas"], MAX_TENTATIVAS, destino)
         # reenfileira antes de remover de :proc, para nunca perder o job
         r.lpush(destino, json.dumps(job))
+        if destino == DLQ and ao_esgotar is not None:
+            try:
+                ao_esgotar(job["payload"])
+            except Exception:
+                log.exception("ao_esgotar falhou; o job permanece na dlq")
     r.lrem(proc, 1, bruto)
     return True
 
 
-def rodar_worker(r: redis.Redis, fila: str, handler: Callable[[dict], None]) -> None:
+def rodar_worker(r: redis.Redis, fila: str, handler: Callable[[dict], None],
+                 ao_esgotar: Callable[[dict], None] | None = None) -> None:
     n = recuperar_presos(r, fila)
     log.info("worker ouvindo %s (%s jobs recuperados de %s:proc)", fila, n, fila)
     while True:
-        processar_um(r, fila, handler)
+        processar_um(r, fila, handler, ao_esgotar=ao_esgotar)
