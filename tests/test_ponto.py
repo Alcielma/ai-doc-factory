@@ -97,6 +97,19 @@ def test_intervalo_intrajornada_nas_duas_faixas(trab, intervalo, falta):
     assert [d["minutos"] for d in ints] == ([falta] if falta else [])
 
 
+def test_intervalo_pre_assinalado_nao_gera_falso_alarme_com_par_unico():
+    folha = [dia("2025-11-04", ("08:00", "17:00"))]
+    sem = apurar_folha(folha, PERFIL)
+    assert [d["tipo"] for d in sem["divergencias"]] == ["intervalo_intrajornada_insuficiente"]
+    com = apurar_folha(folha, PERFIL, intervalo_pre_assinalado=True)
+    assert com["divergencias"] == [] and com["intervalos_nao_verificados"] == ["2025-11-04"]
+    assert com["intervalo_pre_assinalado"] is True
+    # com dois pares o intervalo foi registrado e continua sendo verificado
+    dois = apurar_folha([dia("2025-11-04", ("08:00", "12:00"), ("12:30", "17:30"))], PERFIL,
+                        intervalo_pre_assinalado=True)
+    assert [d["minutos"] for d in dois["divergencias"]] == [30] and dois["intervalos_nao_verificados"] == []
+
+
 def test_jornada_ate_4h_nao_exige_intervalo():
     assert apurar_folha([dia("2025-11-04", ("08:00", "12:00"))], PERFIL)["divergencias"] == []
 
@@ -157,10 +170,23 @@ def test_ponto_britanico_positivo_negativo_e_poucos_dias():
     assert detectar_ponto_britanico(_britanico(0, 12))["sinal_risco"] is True
     neg = [dia(f"2025-11-{d:02d}", ("08:00", "12:00"), ("13:00", f"17:{d * 4:02d}")) for d in range(1, 12)]
     r = detectar_ponto_britanico(neg)
-    assert r["conclusivo"] and r["sinal_risco"] is False and r["variacao_max_min"] == 40
+    assert r["conclusivo"] and r["sinal_risco"] is False and r["fracao_uniforme"] < 0.5
     poucos = detectar_ponto_britanico(_britanico(0, 5))
     assert poucos["conclusivo"] is False and poucos["sinal_risco"] is None
     assert detectar_ponto_britanico(_britanico(0, 5), min_dias=5)["sinal_risco"] is True
+
+
+def test_britanico_um_dia_diferente_nao_esconde_o_mes_uniforme():
+    folha = _britanico(0, 21) + [dia("2025-11-22", ("08:00", "12:00"), ("13:00", "19:30"))]
+    r = detectar_ponto_britanico(folha)
+    assert r["sinal_risco"] is True and r["dias"] == 22 and r["fracao_uniforme"] == pytest.approx(21 / 22, abs=1e-3)
+
+
+def test_britanico_horarios_variados_nao_sinalizam():
+    folha = [dia(f"2025-11-{d:02d}", (f"08:{(d * 7) % 40:02d}", "12:00"), ("13:00", f"17:{(d * 11) % 50:02d}"))
+             for d in range(1, 21)]
+    r = detectar_ponto_britanico(folha)
+    assert r["conclusivo"] and r["sinal_risco"] is False
 
 
 def test_diferenca_com_gemini_registrada_e_vale_o_codigo():

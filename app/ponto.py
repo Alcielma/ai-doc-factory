@@ -12,12 +12,14 @@ interpretado como virada de dia: vira marcacao_invalida (ambíguo); a virada pre
 Perfil: dict {parametro: {"valor": número, "base_legal": texto}}, como devolvido por carregar_perfil.
 """
 from collections import Counter
+from statistics import median
 from datetime import date, datetime, time, timedelta
 
 # --- Configuração única dos limites que NÃO vêm do perfil legal. Valores iniciais, NÃO calibrados. ---
 CONFIG_PONTO = {
     "britanico_variacao_max_min": 5,   # variação máxima (máx - mín) por marcação para considerar "uniforme"
     "britanico_min_dias": 10,          # abaixo disso, não conclui
+    "britanico_fracao_min_dias": 0.9,  # fração de dias "uniformes" a partir da qual há sinal (não calibrado)
     "conf_min_dimensao": 0.5,          # confiança mínima do Jev por dimensão no score
 }
 
@@ -116,16 +118,21 @@ def _noturno_real(pares, ini_min, fim_min):
 
 # ---------------------------------------------------------------- apuração
 
-def apurar_folha(marcacoes, perfil, previstos=None):
+def apurar_folha(marcacoes, perfil, previstos=None, intervalo_pre_assinalado=False):
     """Apura minutos e divergências. Devolve {"dias": [...], "totais": {...}, "divergencias": [...]}.
 
     previstos (opcional): {"2025-11-03": ["08:00", "12:00", ...]} com os horários contratuais, na ordem
     das marcações; habilita a conferência da tolerância de 5 min por marcação. Sem ele, só vale o teto diário.
+
+    intervalo_pre_assinalado: a CLT art. 74, § 2º, permite a pré-assinalação do período de repouso
+    (redação dada pela Lei 13.874/2019, conferida pelo resumo do texto do Planalto). Quando verdadeiro,
+    um dia com um único par de marcações NÃO gera intervalo_intrajornada_insuficiente, porque o intervalo
+    não foi registrado e não dá para verificá-lo; esses dias saem em "intervalos_nao_verificados".
     """
     p = {k: v["valor"] for k, v in perfil.items()}
     base = {k: v["base_legal"] for k, v in perfil.items()}
     previstos = previstos or {}
-    divs, dias = [], {}
+    divs, dias, nao_verificados = [], {}, []
 
     def div(tipo, dia, minutos, base_legal, detalhe=""):
         divs.append({"tipo": tipo, "data": dia.isoformat(), "minutos": minutos,
@@ -185,7 +192,9 @@ def apurar_folha(marcacoes, perfil, previstos=None):
             ref = base["intervalo_curto_min"]
         else:
             exigido = 0
-        if exigido and intervalo < exigido:
+        if exigido and intervalo_pre_assinalado and len(pares) == 1:
+            nao_verificados.append(dia.isoformat())
+        elif exigido and intervalo < exigido:
             div("intervalo_intrajornada_insuficiente", dia, exigido - intervalo, ref,
                 f"intervalo de {intervalo:g} min, exigido {exigido:g}")
 
@@ -240,22 +249,27 @@ def apurar_folha(marcacoes, perfil, previstos=None):
         "dias_validos": len(lista),
         "dias_invalidos": sum(1 for x in divs if x["tipo"] == "marcacao_invalida"),
     }
-    return {"dias": lista, "totais": totais, "divergencias": divs}
+    return {"dias": lista, "totais": totais, "divergencias": divs,
+            "intervalo_pre_assinalado": bool(intervalo_pre_assinalado),
+            "intervalos_nao_verificados": nao_verificados}
 
 
 # ---------------------------------------------------------------- ponto britânico
 
-def detectar_ponto_britanico(marcacoes, variacao_max_min=None, min_dias=None):
+def detectar_ponto_britanico(marcacoes, variacao_max_min=None, min_dias=None, fracao_min=None):
     """SINAL DE RISCO, não prova de fraude nem conclusão jurídica.
 
     Horários de entrada e saída praticamente idênticos todos os dias são indício de registro não
     fidedigno (Súmula 338 do TST trata de registros uniformes, "ponto britânico"; CONFERIR O TEXTO
-    OFICIAL do item III antes de citar). Mede, por posição de marcação, a variação (máx - mín) do
-    minuto-do-dia. Só considera dias válidos com trabalho e o número de marcações mais comum; com menos
+    OFICIAL do item III antes de citar). Para cada posição de marcação calcula-se a mediana do minuto-do-dia;
+    um dia é "uniforme" se TODAS as suas marcações ficam a até variacao_max_min da mediana da posição.
+    Há sinal quando a fração de dias uniformes é >= fracao_min (assim um dia atípico não esconde um mês
+    uniforme). Só considera dias válidos com trabalho e o número de marcações mais comum; com menos
     de min_dias não conclui (sinal_risco None).
     """
     variacao_max_min = CONFIG_PONTO["britanico_variacao_max_min"] if variacao_max_min is None else variacao_max_min
     min_dias = CONFIG_PONTO["britanico_min_dias"] if min_dias is None else min_dias
+    fracao_min = CONFIG_PONTO["britanico_fracao_min_dias"] if fracao_min is None else fracao_min
     linhas = []
     for item in marcacoes:
         try:
@@ -265,15 +279,18 @@ def detectar_ponto_britanico(marcacoes, variacao_max_min=None, min_dias=None):
         if pares:
             midnight = datetime.combine(dia, time())
             linhas.append([_minutos(m - midnight) for par in pares for m in par])
+    nulo = {"conclusivo": False, "sinal_risco": None, "fracao_uniforme": None}
     if not linhas:
-        return {"conclusivo": False, "sinal_risco": None, "dias": 0, "variacao_max_min": None}
+        return {**nulo, "dias": 0}
     n = Counter(len(x) for x in linhas).most_common(1)[0][0]
     linhas = [x for x in linhas if len(x) == n]
     if len(linhas) < min_dias:
-        return {"conclusivo": False, "sinal_risco": None, "dias": len(linhas), "variacao_max_min": None}
-    variacao = max(max(c) - min(c) for c in zip(*linhas))
-    return {"conclusivo": True, "sinal_risco": variacao <= variacao_max_min, "dias": len(linhas),
-            "variacao_max_min": variacao}
+        return {**nulo, "dias": len(linhas)}
+    medianas = [median(c) for c in zip(*linhas)]
+    uniformes = sum(all(abs(m - md) <= variacao_max_min for m, md in zip(x, medianas)) for x in linhas)
+    fracao = uniformes / len(linhas)
+    return {"conclusivo": True, "sinal_risco": fracao >= fracao_min, "dias": len(linhas),
+            "fracao_uniforme": round(fracao, 4)}
 
 
 # ---------------------------------------------------------------- Gemini x código
