@@ -14,7 +14,13 @@ Projeto de hackathon (7 horas). Recebe PDFs de lote com muitas páginas escanead
 - **Rode de verdade:** nada está pronto sem ter sido executado (`docker compose up`, processar um lote, rodar a avaliação). Mostre a saída real.
 - **Pergunte em vez de assumir:** se algo for ambíguo ou depender de informação que você não tem, pare e reporte. Subagents devolvem a dúvida à sessão principal.
 - **Não invente métricas:** todo número no README vem de um script que foi rodado.
-- **Nunca commite segredos:** chaves ficam em `.env`, que está no `.gitignore`. Mantenha `.env.example` atualizado, sem valores.
+- **Nunca suba chaves de API nem outros segredos:** o repositório é público. `OPENROUTER_API_KEY`, `GEMINI_API_KEY` e `POSTGRES_PASSWORD` ficam só no `.env`, que está no `.gitignore`.
+  - Nunca force a inclusão do `.env` (`git add -f`) nem coloque chaves no código, em testes, em exemplos, no `docker-compose.yml`, em commits ou em PRs.
+  - Nunca imprima chaves em logs, saídas de comando ou relatórios. Para conferir uma variável, mostre só o nome.
+  - O cache de LLM não pode guardar cabeçalhos de autenticação.
+  - Mantenha `.env.example` atualizado, sem valores.
+  - Antes de cada commit, revise o que está sendo adicionado com `git diff --cached`.
+  - Se uma chave vazar, pare e avise a pessoa responsável, porque ela precisa revogar a chave. Apagar o commit não basta.
 
 ### Se estiver atrasado, corte nesta ordem
 
@@ -60,7 +66,13 @@ A lista fica em configuração, em um único lugar, nunca espalhada pelo código
 - **Jev:** classificador principal, só texto, via OpenRouter (`OPENROUTER_API_KEY`, `JEV_MODEL`). Devolve escolha, confiança e probabilidades por opção. **Antes de implementar, faça uma chamada de teste e confirme o formato real da resposta.** Se não houver confiança utilizável, avise e proponha alternativa em vez de inventar.
 - **Gemini:** segunda opinião (Google AI Studio, `GEMINI_API_KEY`), com a imagem da primeira página, usado só quando a confiança do Jev for baixa. A confiança autodeclarada do Gemini **não** entra na regra de decisão.
 - **Gemini na análise de folha de ponto (Goal 6):** modelo em `GEMINI_ANALISE_MODEL`, padrão `gemini-3.5-flash`. A documentação do Gemini indica esse ID como obsoleto e redirecionado para um modelo mais novo, então registre o modelo realmente devolvido pela API.
-- **Jev no score de risco (Goal 6):** usa o tipo `Score` do Jev. Confirme o formato real da resposta em uma chamada de teste, como no classificador.
+- **Jev no score de risco (Goal 6):** usa uma pergunta `Score` do Jev por dimensão de risco, sobre as divergências já apuradas.
+- **Toda implementação com Jev segue a skill `building-with-typesafe-jev`.** Leia o `SKILL.md` e o `api-reference.md` dela antes de escrever perguntas. Em resumo:
+  - Uma decisão simples por pergunta, com `state` em JSON nomeado e instruções que apontam para ele por caminho.
+  - Níveis de `Score` descrevem situações concretas, com uma dimensão cada.
+  - `Choice` tem a lista completa mais uma opção de nenhum dos anteriores.
+  - Contas, datas e contagens ficam no código.
+  - Perguntas, limiares e pesos ficam em um único módulo de constantes.
 - Toda decisão de confiança (limiares, roteamento) é feita em código determinístico, não pelo LLM.
 - Cache em disco das respostas dos LLMs, com chave = hash da entrada + modelo + prompt, para a demo não depender de rede.
 - Em cada classificação, guarde o modelo usado, a versão do prompt e as probabilidades.
@@ -80,8 +92,9 @@ Os dados sintéticos são otimistas. O README deve registrar que a validação e
 3. Goal 3 com um classificador simples para fechar o fluxo, depois trocar por Jev + Gemini.
 4. Goal 5 (roteamento e revisão) e script de avaliação com números reais.
 5. Goal 6 (análise de risco das folhas de ponto).
-6. Goal 2 (refinamentos de agrupamento/correção). **Por enquanto, só backend:** não implemente a UI Streamlit nem o serviço `ui` até nova decisão.
-7. README com como rodar, arquitetura, resultados medidos e limitações.
+6. Goal 7 (score de conformidade dos documentos).
+7. Goal 2 (refinamentos de agrupamento/correção). **Por enquanto, só backend:** não implemente a UI Streamlit nem o serviço `ui` até nova decisão.
+8. README com como rodar, arquitetura, resultados medidos e limitações.
 
 ## Goals
 
@@ -120,6 +133,7 @@ Segmentação em cascata:
 - Salvar o texto por página no banco.
 - Gerar um PDF pesquisável por documento (OCRmyPDF ou camada de texto sobre a imagem). Se não der tempo, entregar a busca no banco e registrar isso claramente.
 - `GET /busca?q=`: full-text search do PostgreSQL (configuração `portuguese`), retornando lote, página e trecho destacado.
+- O upload (`POST /lotes`) aceita PDF, JPEG, PNG e TIFF (inclusive multipágina); imagens são convertidas para `original.pdf` na chegada.
 
 **Aceite:** buscar uma palavra presente num documento (ex.: nome de um funcionário) retorna a página correta.
 
@@ -142,7 +156,7 @@ Demais entregas:
 
 ### Goal 6: Análise de risco das folhas de ponto
 
-Para documentos do tipo `folha_ponto`, encontrar divergências, com foco principal em horas extras, e gerar um score de risco com base na CLT e na Portaria MTP nº 671/2021.
+Para documentos do tipo `folha_ponto`, encontrar divergências, com foco principal em horas extras, e gerar um score de risco com base na CLT e na Portaria MTP nº 671/2021. O score é **por folha**; o consolidado por funcionário fica fora do escopo por enquanto.
 
 **Perfil padrão:** tabela `perfil_jornada`, criada com um perfil CLT de referência. Cada parâmetro guarda o valor e a base legal. Confira os valores no texto oficial da CLT e da Portaria antes de usar:
 
@@ -161,11 +175,43 @@ Para documentos do tipo `folha_ponto`, encontrar divergências, com foco princip
 **Fluxo:**
 
 1. Documento que termina como `folha_ponto`, inclusive por correção humana, entra na fila `analisar_folha_ponto` (payload `{documento_id}`), consumida pelo serviço `worker_analise`. A análise não participa do fan-in do lote.
-2. O Gemini recebe o texto do OCR e o perfil padrão e devolve em JSON as divergências (tipo, data, minutos, base legal, trecho de evidência) e uma análise breve.
-3. O Jev recebe a análise e as divergências e devolve o score de risco com as probabilidades por nível.
-4. Persistir em `analise_ponto`, uma linha por documento (reprocessar substitui, sem duplicar): perfil usado, divergências, análise, score, probabilidades, modelos e versões dos prompts.
-5. `GET /documentos/{id}/analise-ponto` devolve o resultado.
+2. O Gemini recebe o texto do OCR, a imagem das páginas e o perfil padrão e devolve em JSON as marcações por dia, as divergências (tipo, data, minutos, base legal, trecho de evidência) e uma análise breve.
+3. O código recalcula os minutos a partir das marcações e compara com o perfil. Quando o resultado não bater com o do Gemini, vale o cálculo do código e a diferença é registrada. O código também detecta o ponto britânico (horários quase idênticos ao longo do período), com limite configurável, como sinal de risco e não como prova de fraude.
+4. O Jev recebe as divergências apuradas e a análise e responde uma pergunta `Score` por dimensão (horas extras, intervalos, descanso e registro), em uma única requisição, com níveis concretos. O score geral é calculado em código: cada dimensão é normalizada e o resultado é o **máximo** entre elas, sem média, porque um problema grave não pode ser diluído. Dimensão com confiança baixa fica como indeterminada e manda o documento para revisão.
+5. Persistir em `analise_ponto`, uma linha por documento (reprocessar substitui, sem duplicar): perfil usado, marcações, divergências, análise, scores por dimensão, score geral, probabilidades, modelos e versões dos prompts.
+6. `GET /documentos/{id}/analise-ponto` devolve o resultado.
 
 O score é apoio à auditoria, não parecer jurídico. A convenção coletiva e o acordo de compensação podem alterar os limites do perfil padrão. O README deve registrar as duas ressalvas.
 
 **Aceite:** uma folha de ponto com horas extras acima do limite gera divergências com data, minutos e base legal, além do score; uma folha regular gera score menor. Não reporte métrica de acurácia sem um gabarito de divergências.
+
+### Goal 7: Score de conformidade dos documentos
+
+Score de 0 a 100 **por lote**, tratando cada lote como o dossiê de uma pessoa. É separado do risco de ponto do Goal 6, que não entra nesta nota. Fica nos 7 tipos atuais. O cálculo é feito em código determinístico; os LLMs só extraem os dados.
+
+| Critério | Peso | Regra | Nota do critério |
+|---|---|---|---|
+| Completude | 40% | Todos os documentos obrigatórios foram enviados | Obrigatórios presentes / obrigatórios |
+| Validade | 35% | Documentos vencidos ou dentro da validade | Válidos / analisados com regra de validade |
+| Consistência | 25% | Divergências nas informações entre documentos | Campos coerentes / campos comparados |
+
+**Classificação:** 85–100 Regular; 65–84 Atenção; 0–64 Crítico.
+
+**Regras:**
+
+- Documento ausente reduz a pontuação.
+- Documento vencido reduz a pontuação.
+- Divergências são sinalizadas para conferência e reduzem a nota de Consistência.
+- Documento não analisado (`segmentado`, `em_revisao`, `erro` ou com tipo `desconhecido`) fica pendente, sem nota zero automática. Enquanto houver documento de tipo não identificado, um obrigatório faltante conta como pendente, não como ausente.
+- Critério sem nada analisável fica pendente, e seu peso é redistribuído entre os demais. Nesse caso, ou quando houver pendências, o score é marcado como `provisorio`. Sem nenhum critério analisável, não há score.
+- O score mostra o motivo de cada desconto: critério, documento, regra e pontos descontados.
+- A correção humana entra no cálculo: o score é recalculado a partir do estado atual dos documentos.
+
+**Configuração, em um único módulo:** pesos, faixas, tipos obrigatórios e regras de validade.
+
+- Obrigatórios: `aso`, `contrato_trabalho`, `holerite`, `folha_pagamento` e `folha_ponto`. `atestado_medico` e `recibo_ferias` só existem quando há afastamento ou férias, então não contam como ausência.
+- Validade: `aso` e `contrato_trabalho` por prazo determinado. Confira o prazo do ASO na NR-7. Documento sem data legível fica pendente. A data de referência é registrada no resultado.
+
+**Fluxo:** o Gemini extrai datas e campos de identificação (nome, CPF, matrícula, data de admissão) em JSON. O código normaliza, compara e calcula. Conferências de texto ambíguas, como variação de nome, podem usar `Noul` do Jev, seguindo a skill. Os dados extraídos ficam em `documento_campos`, e `GET /lotes/{id}/conformidade` devolve a nota por critério, o score, a classificação, os descontos e as pendências.
+
+**Aceite:** testes cobrem cada regra e cada limite de faixa; em um lote sintético, a remoção de um obrigatório, um ASO vencido e um nome divergente geram os descontos esperados com o motivo; documento pendente não zera a nota. Não reporte métrica de acurácia sem gabarito.

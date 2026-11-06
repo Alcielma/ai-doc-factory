@@ -9,6 +9,7 @@ from pydantic import BaseModel, field_validator
 
 from app import config
 from app.filas import enfileirar
+from app.imagem import ArquivoInvalido, imagem_para_pdf
 
 app = FastAPI(title="Document AI Factory")
 r = redis.Redis.from_url(config.REDIS_URL, decode_responses=True)
@@ -25,9 +26,14 @@ def health():
 @app.post("/lotes")
 def criar_lote(arquivo: UploadFile = File(...)):
     dados = arquivo.file.read()
-    if not dados.startswith(b"%PDF"):
-        raise HTTPException(400, "o arquivo não é um PDF")
-    sha = hashlib.sha256(dados).hexdigest()
+    sha = hashlib.sha256(dados).hexdigest()  # dos bytes originais enviados, PDF ou imagem
+    if dados.startswith(b"%PDF"):
+        pdf = dados
+    else:  # converte antes de tocar no banco: arquivo inválido não cria lote
+        try:
+            pdf = imagem_para_pdf(dados)
+        except ArquivoInvalido as e:
+            raise HTTPException(400, str(e))
     with psycopg.connect(config.DATABASE_URL) as conn:
         row = conn.execute(
             "INSERT INTO lote (sha256, nome_arquivo) VALUES (%s, %s) "
@@ -43,7 +49,7 @@ def criar_lote(arquivo: UploadFile = File(...)):
             return {"lote_id": id_, "estado": estado, "existente": True}
         pasta = Path(config.DATA_DIR) / f"lote_{row[0]}"
         pasta.mkdir(parents=True, exist_ok=True)
-        (pasta / "original.pdf").write_bytes(dados)
+        (pasta / "original.pdf").write_bytes(pdf)
     enfileirar(r, config.FILA_SEGMENTAR, {"lote_id": row[0]})
     return {"lote_id": row[0], "estado": row[1], "existente": False}
 
