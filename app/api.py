@@ -1,4 +1,5 @@
 import hashlib
+from datetime import date
 from pathlib import Path
 
 import psycopg
@@ -7,7 +8,8 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, field_validator
 
-from app import config
+from app import conformidade, config
+from app.campos import campos_do_lote
 from app.filas import enfileirar
 from app.imagem import ArquivoInvalido, imagem_para_pdf
 
@@ -183,3 +185,17 @@ def imagem_pagina(lote_id: int, numero: int):
     if not png.is_file():
         raise HTTPException(404, "imagem não encontrada")
     return FileResponse(png, media_type="image/png")
+
+
+@app.get("/lotes/{lote_id}/conformidade")
+def conformidade_lote(lote_id: int):
+    """Score de conformidade calculado a partir do estado atual (inclui correções humanas)."""
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        if conn.execute("SELECT 1 FROM lote WHERE id = %s", (lote_id,)).fetchone() is None:
+            raise HTTPException(404, "lote não encontrado")
+        docs = conn.execute(
+            "SELECT id, tipo, estado FROM documento WHERE lote_id = %s ORDER BY ordem", (lote_id,)
+        ).fetchall()
+        campos = campos_do_lote(conn, lote_id)
+    documentos = [{"id": i, "tipo": t, "estado": e} for i, t, e in docs]
+    return {"lote_id": lote_id, **conformidade.calcular(documentos, campos, date.today())}
