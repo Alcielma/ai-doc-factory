@@ -147,12 +147,20 @@ A pasta `frontend/` é um projeto separado do backend (Vite + React + TypeScript
 | Método e rota | Descrição | Exemplo |
 |---|---|---|
 | `GET /health` | Verifica Postgres e Redis | `curl localhost:8000/health` |
-| `POST /lotes` | Envia PDF, JPEG, PNG ou TIFF (multipágina inclusive); imagens viram `original.pdf`. Arquivo inválido: 400 | `curl -F "arquivo=@lote.pdf" localhost:8000/lotes` |
+| `POST /lotes` | Envia PDF, JPEG, PNG ou TIFF (multipágina inclusive); imagens viram `original.pdf`. Arquivo inválido: 400. Campo opcional `empresa_id` vincula o lote a uma empresa cadastrada (404 se não existir; 409 se o lote já pertence a outra) | `curl -F "arquivo=@lote.pdf" localhost:8000/lotes` |
 | `GET /lotes/{id}` | Estado do lote e lista de documentos (intervalo, tipo, confiança, probabilidades) | `curl localhost:8000/lotes/1` |
-| `GET /documentos/{id}` | Documento com tipo, confiança, motivo de revisão e páginas (texto e `imagem_url`) | `curl localhost:8000/documentos/2` |
+| `GET /documentos/{id}` | Documento com tipo, confiança, motivo de revisão e páginas (texto e `imagem_url`); também `campos` (extraídos, campo->valor), `pessoa` (`campos.nome` ou null), `nome_arquivo`, `n_paginas` e `processado_em` (criação do lote) | `curl localhost:8000/documentos/2` |
+| `GET /documentos?empresa_id=&falhou=` | Documentos agrupados por tipo (`grupos`; `sem_tipo` para quem não tem); cada item traz também `campos`, `pessoa`, `nome_arquivo`, `n_paginas` e `processado_em`. `empresa_id` filtra pela empresa do lote (404 se não existir); `falhou=true` só estado `erro`, `false` exclui | `curl "localhost:8000/documentos?falhou=false"` |
+| `PATCH /documentos/{id}/tipo` | Corrige o tipo (`{"tipo","revisor"}`) em qualquer estado exceto `segmentado` e `erro` (409); vira `revisado`; `tipo_original` guarda o primeiro tipo; dispara análise de ponto e extração como a revisão | `curl -X PATCH -H "Content-Type: application/json" -d '{"tipo":"aso","revisor":"ana"}' localhost:8000/documentos/1/tipo` |
+| `DELETE /documentos/{id}` | 204. Apaga só a linha do documento: análise de ponto e campos extraídos caem em cascata; as páginas e o texto permanecem (`documento_id` NULL) e nenhum arquivo em disco é apagado. 409 se o lote está em andamento | `curl -X DELETE localhost:8000/documentos/1` |
 | `GET /lotes/{lote_id}/paginas/{n}/imagem` | PNG da página | `curl -o p1.png localhost:8000/lotes/1/paginas/1/imagem` |
-| `GET /busca?q=...&limite=20` | Full-text search (`portuguese`); devolve lote, página e trecho com `<b>` | `curl "localhost:8000/busca?q=contrato"` |
-| `GET /revisao` | Fila de documentos `em_revisao`, com tipo sugerido e motivo | `curl localhost:8000/revisao` |
+| `GET /busca?q=...&limite=20` | Full-text search (`portuguese`); devolve lote, página e trecho com `<b>`, mais `documento_id` (null se a página estiver órfã), `tipo` e `nome_arquivo` | `curl "localhost:8000/busca?q=contrato"` |
+| `POST /cadastro-empresas` | Cadastra empresa por nome (`{"nome": "..."}`); 201. Nome vazio: 422; nome repetido (sem diferenciar caixa nem espaços nas pontas): 409 | `curl -H "Content-Type: application/json" -d '{"nome":"Alfa Ltda"}' localhost:8000/cadastro-empresas` |
+| `GET /cadastro-empresas` | Lista empresas com seus lotes e documentos (`n_lotes`, `n_documentos`) | `curl localhost:8000/cadastro-empresas` |
+| `GET /cadastro-empresas/{id}` | Uma empresa no mesmo formato; 404 se não existir | `curl localhost:8000/cadastro-empresas/1` |
+| `GET /revisao` | Fila de documentos `em_revisao`, com tipo sugerido e motivo; também `pagina_ini`, `pagina_fim`, `campos`, `pessoa`, `nome_arquivo`, `n_paginas` e `processado_em` | `curl localhost:8000/revisao` |
+| `GET /tipos` | Tipos documentais `[{slug, nome, icone}]` na ordem da configuração (`TIPOS_INFO` em `app/config.py`), sem `desconhecido` | `curl localhost:8000/tipos` |
+| `PUT /documentos/{id}/campos` | Corrige campos extraídos (`{"campos": {nome: valor ou null}, "revisor"}`): valor grava com origem `humano`, `null` remove. Nome `^[a-z0-9_]{1,40}$`, valor não vazio até 500 caracteres, `campos` e `revisor` não vazios (422); 404 se não existe; qualquer estado. Devolve o documento | `curl -X PUT -H "Content-Type: application/json" -d '{"campos":{"nome":"Maria"},"revisor":"ana"}' localhost:8000/documentos/1/campos` | `curl localhost:8000/revisao` |
 | `POST /documentos/{id}/revisao` | Corrige o tipo; o documento vira `revisado` e `tipo_original` guarda o tipo sugerido. 409 se o documento não está em revisão | ver abaixo |
 
 ```bash

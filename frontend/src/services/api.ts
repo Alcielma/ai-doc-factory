@@ -1,3 +1,5 @@
+import type { Company } from '../types';
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 const API_PREFIX = import.meta.env.VITE_API_PREFIX || '/api';
 
@@ -123,9 +125,28 @@ export const apiService = {
   },
 
   /**
+   * Obtém os documentos agrupados por tipo
+   */
+  getDocumentosAgrupados: async (empresaId?: number): Promise<{ grupos: any[] }> => {
+    const params = empresaId ? `?empresa_id=${empresaId}` : '';
+    const response = await fetch(`${BASE_URL}/documentos${params}`);
+    if (!response.ok) throw new Error('Erro ao listar documentos');
+    return response.json();
+  },
+
+  /**
+   * Obtém a análise de folha de ponto de um documento
+   */
+  getAnalisePonto: async (documentoId: number): Promise<any> => {
+    const response = await fetch(`${BASE_URL}/documentos/${documentoId}/analise-ponto`);
+    if (!response.ok) throw new Error('Análise não encontrada');
+    return response.json();
+  },
+
+  /**
    * Obtém a lista de empresas e seus scores de conformidade
    */
-  getEmpresas: async (): Promise<any[]> => {
+  getEmpresas: async (): Promise<Company[]> => {
     const response = await fetch(`${BASE_URL}/empresas`);
     if (!response.ok) throw new Error('Erro ao listar empresas');
     return response.json();

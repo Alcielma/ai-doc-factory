@@ -1,6 +1,14 @@
 -- Schema aplicado na primeira inicialização do Postgres (docker-entrypoint-initdb.d).
 -- Os tipos documentais NÃO são restringidos aqui: a lista vive em app/config.py.
 
+-- Cadastro de empresas (por nome); os lotes podem ser vinculados a uma na hora do upload.
+CREATE TABLE empresa (
+    id              BIGSERIAL PRIMARY KEY,
+    nome            TEXT NOT NULL,
+    criado_em       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX empresa_nome_uniq ON empresa (lower(btrim(nome)));
+
 CREATE TABLE lote (
     id              BIGSERIAL PRIMARY KEY,
     sha256          CHAR(64) NOT NULL UNIQUE,          -- idempotência do upload
@@ -8,8 +16,10 @@ CREATE TABLE lote (
     estado          TEXT NOT NULL DEFAULT 'recebido'
                     CHECK (estado IN ('recebido', 'ocr', 'classificando', 'concluido', 'erro')),
     docs_pendentes  INTEGER NOT NULL DEFAULT 0 CHECK (docs_pendentes >= 0),
-    criado_em       TIMESTAMPTZ NOT NULL DEFAULT now()
+    criado_em       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    empresa_id      BIGINT REFERENCES empresa(id) ON DELETE SET NULL
 );
+CREATE INDEX lote_empresa_idx ON lote (empresa_id);
 
 CREATE TABLE documento (
     id              BIGSERIAL PRIMARY KEY,

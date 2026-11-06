@@ -1,0 +1,202 @@
+"""GET /documentos, PATCH /documentos/{id}/tipo e DELETE /documentos/{id}, contra o Postgres do compose."""
+import uuid
+
+import psycopg
+import pytest
+from fastapi.testclient import TestClient
+
+from app import config
+from app.api import app
+from app.routers.documentos import actions
+
+client = TestClient(app)
+
+
+@pytest.fixture
+def banco(extracoes, monkeypatch):
+    analises = []
+    monkeypatch.setattr(actions, "enfileirar_analise", lambda doc_id, cliente=None: analises.append(doc_id))
+    conn = psycopg.connect(config.DATABASE_URL, autocommit=True)
+    lotes, empresas = [], []
+
+    def empresa():
+        e = conn.execute("INSERT INTO empresa (nome) VALUES (%s) RETURNING id",
+                         (f"Emp {uuid.uuid4().hex}",)).fetchone()[0]
+        empresas.append(e)
+        return e
+
+    def lote(docs, estado="concluido", empresa_id=None):
+        """docs: lista de (estado, tipo). Devolve (lote_id, [documento_id])."""
+        lid = conn.execute(
+            "INSERT INTO lote (sha256, nome_arquivo, estado, docs_pendentes, empresa_id) "
+            "VALUES (%s, 't.pdf', %s, 0, %s) RETURNING id",
+            (uuid.uuid4().hex + uuid.uuid4().hex, estado, empresa_id)).fetchone()[0]
+        lotes.append(lid)
+        ids = []
+        for n, (est, tipo) in enumerate(docs, start=1):
+            i = conn.execute(
+                "INSERT INTO documento (lote_id, ordem, pagina_ini, pagina_fim, estado, tipo) "
+                "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id", (lid, n, n, n, est, tipo)).fetchone()[0]
+            conn.execute("INSERT INTO pagina (lote_id, numero, documento_id, texto) VALUES (%s, %s, %s, 'texto')",
+                         (lid, n, i))
+            ids.append(i)
+        return lid, ids
+
+    yield conn, lote, empresa, extracoes, analises
+    conn.execute("DELETE FROM lote WHERE id = ANY(%s)", (lotes,))
+    conn.execute("DELETE FROM empresa WHERE id = ANY(%s)", (empresas,))
+    conn.close()
+
+
+def _ids(resp):
+    return {g["tipo"]: [d["id"] for d in g["documentos"]] for g in resp.json()["grupos"]}
+
+
+# ---------- GET /documentos ----------
+
+def test_listar_por_empresa_agrupa_e_ordena(banco):
+    _, lote, empresa, _, _ = banco
+    e = empresa()
+    l1, (a, b, c, d) = lote([("classificado", "holerite"), ("classificado", "aso"),
+                             ("em_revisao", "desconhecido"), ("segmentado", None)], empresa_id=e)
+    l2, (x,) = lote([("classificado", "aso")], empresa_id=e)
+    lote([("classificado", "aso")])  # lote sem empresa: não deve aparecer
+    r = client.get("/documentos", params={"empresa_id": e})
+    assert r.status_code == 200
+    grupos = r.json()["grupos"]
+    assert [g["tipo"] for g in grupos] == ["aso", "holerite", "desconhecido", "sem_tipo"]
+    assert [g["total"] for g in grupos] == [2, 1, 1, 1]
+    assert _ids(r) == {"aso": [b, x], "holerite": [a], "desconhecido": [c], "sem_tipo": [d]}
+    assert set(grupos[0]["documentos"][0]) >= {"id", "lote_id", "ordem", "pagina_ini", "pagina_fim", "estado",
+                                               "tipo", "confianca", "empresa_id"}
+    assert grupos[0]["documentos"][0]["empresa_id"] == e
+
+
+def test_listar_sem_filtro_inclui_todos(banco):
+    _, lote, empresa, _, _ = banco
+    _, (a,) = lote([("erro", None)])
+    _, (b,) = lote([("classificado", "aso")], empresa_id=empresa())
+    r = client.get("/documentos")
+    todos = {d["id"] for g in r.json()["grupos"] for d in g["documentos"]}
+    assert {a, b} <= todos
+
+
+def test_listar_ordem_dos_tipos_segue_config(banco):
+    _, lote, empresa, _, _ = banco
+    e = empresa()
+    lote([("classificado", t) for t in reversed(config.TIPOS)], empresa_id=e)
+    r = client.get("/documentos", params={"empresa_id": e})
+    assert [g["tipo"] for g in r.json()["grupos"]] == list(config.TIPOS)
+
+
+def test_listar_empresa_inexistente_404(banco):
+    assert client.get("/documentos", params={"empresa_id": 999999999}).status_code == 404
+
+
+def test_listar_falhou(banco):
+    _, lote, empresa, _, _ = banco
+    e = empresa()
+    _, (ok, ruim) = lote([("classificado", "aso"), ("erro", None)], empresa_id=e)
+    r = client.get("/documentos", params={"empresa_id": e, "falhou": "true"})
+    assert _ids(r) == {"sem_tipo": [ruim]}
+    r = client.get("/documentos", params={"empresa_id": e, "falhou": "false"})
+    assert _ids(r) == {"aso": [ok]}
+    r = client.get("/documentos", params={"empresa_id": e})
+    assert _ids(r) == {"aso": [ok], "sem_tipo": [ruim]}
+
+
+# ---------- PATCH ----------
+
+def _patch(i, tipo="aso", revisor="ana"):
+    return client.patch(f"/documentos/{i}/tipo", json={"tipo": tipo, "revisor": revisor})
+
+
+def test_patch_feliz_preserva_tipo_original(banco):
+    _, lote, _, extracoes, _ = banco
+    _, (i,) = lote([("classificado", "holerite")])
+    r = _patch(i, "aso", "  ana ")
+    assert r.status_code == 200
+    j = r.json()
+    assert (j["id"], j["estado"], j["tipo"], j["tipo_original"], j["revisor"]) == (i, "revisado", "aso", "holerite", "ana")
+    assert j["revisado_em"] and j["paginas"][0]["numero"] == 1
+    j = _patch(i, "contrato_trabalho", "bia").json()
+    assert (j["tipo"], j["tipo_original"], j["revisor"]) == ("contrato_trabalho", "holerite", "bia")
+    assert extracoes == [i, i]
+    assert client.get(f"/documentos/{i}").json()["tipo"] == "contrato_trabalho"
+
+
+def test_patch_validacoes(banco):
+    _, lote, _, _, _ = banco
+    _, (i,) = lote([("classificado", "aso")])
+    assert _patch(i, "inexistente").status_code == 422
+    assert _patch(i, "desconhecido").status_code == 422
+    assert _patch(i, "aso", "   ").status_code == 422
+    assert client.get(f"/documentos/{i}").json()["estado"] == "classificado"
+
+
+def test_patch_404(banco):
+    assert _patch(999999999).status_code == 404
+
+
+@pytest.mark.parametrize("estado", ["segmentado", "erro"])
+def test_patch_409(banco, estado):
+    _, lote, _, extracoes, _ = banco
+    _, (i,) = lote([(estado, None)])
+    r = _patch(i)
+    assert r.status_code == 409 and estado in r.json()["detail"]
+    assert extracoes == []
+
+
+def test_patch_aceita_em_revisao_e_revisado(banco):
+    _, lote, _, _, _ = banco
+    _, (a, b) = lote([("em_revisao", "desconhecido"), ("revisado", "aso")])
+    assert _patch(a, "holerite").json()["tipo_original"] == "desconhecido"
+    assert _patch(b, "holerite").status_code == 200
+
+
+def test_patch_dispara_analise_so_ao_virar_folha_ponto(banco):
+    _, lote, _, _, analises = banco
+    _, (a, b, c) = lote([("classificado", "aso"), ("classificado", "folha_ponto"), ("classificado", "aso")])
+    _patch(a, "folha_ponto")
+    assert analises == [a]
+    _patch(b, "folha_ponto")  # já era folha_ponto
+    _patch(c, "holerite")
+    assert analises == [a]
+
+
+# ---------- DELETE ----------
+
+def test_delete_204_cascata_e_paginas_preservadas(banco):
+    conn, lote, _, _, _ = banco
+    lid, (i, outro) = lote([("classificado", "folha_ponto"), ("classificado", "aso")])
+    conn.execute("INSERT INTO analise_ponto (documento_id, estado) VALUES (%s, 'concluida')", (i,))
+    conn.execute("INSERT INTO documento_campos (documento_id, campo, valor, origem) VALUES (%s, 'nome', 'x', 't')", (i,))
+    antes = conn.execute("SELECT docs_pendentes FROM lote WHERE id = %s", (lid,)).fetchone()
+    r = client.delete(f"/documentos/{i}")
+    assert r.status_code == 204 and r.content == b""
+    assert conn.execute("SELECT count(*) FROM documento WHERE id = %s", (i,)).fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM analise_ponto WHERE documento_id = %s", (i,)).fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM documento_campos WHERE documento_id = %s", (i,)).fetchone()[0] == 0
+    pag = conn.execute("SELECT documento_id, texto FROM pagina WHERE lote_id = %s AND numero = 1", (lid,)).fetchone()
+    assert pag == (None, "texto")
+    assert conn.execute("SELECT count(*) FROM documento WHERE id = %s", (outro,)).fetchone()[0] == 1
+    assert conn.execute("SELECT docs_pendentes FROM lote WHERE id = %s", (lid,)).fetchone() == antes
+    assert client.get(f"/documentos/{i}").status_code == 404
+
+
+def test_delete_404(banco):
+    assert client.delete("/documentos/999999999").status_code == 404
+
+
+@pytest.mark.parametrize("estado", ["recebido", "ocr", "classificando"])
+def test_delete_409_lote_em_andamento(banco, estado):
+    _, lote, _, _, _ = banco
+    _, (i,) = lote([("classificado", "aso")], estado=estado)
+    assert client.delete(f"/documentos/{i}").status_code == 409
+    assert client.get(f"/documentos/{i}").status_code == 200
+
+
+def test_delete_lote_com_erro_permitido(banco):
+    _, lote, _, _, _ = banco
+    _, (i,) = lote([("erro", None)], estado="erro")
+    assert client.delete(f"/documentos/{i}").status_code == 204

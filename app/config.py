@@ -1,15 +1,18 @@
 """Configuração única: tipos documentais, limiares e conexões (tudo vindo do ambiente)."""
 import os
 
-TIPOS = (
-    "aso",
-    "folha_pagamento",
-    "folha_ponto",
-    "holerite",
-    "recibo_ferias",
-    "atestado_medico",
-    "contrato_trabalho",
-)
+# Fonte única dos tipos documentais: slug -> rótulo e ícone (usado por GET /tipos). A ordem é a de exibição.
+# Para adicionar um tipo, basta uma entrada aqui. Ícones aceitos: car, hash, idcard, home, file, briefcase.
+TIPOS_INFO = {
+    "aso": {"nome": "ASO (Atestado de Saúde Ocupacional)", "icone": "file"},
+    "folha_pagamento": {"nome": "Folha de pagamento", "icone": "briefcase"},
+    "folha_ponto": {"nome": "Folha de ponto", "icone": "hash"},
+    "holerite": {"nome": "Holerite", "icone": "idcard"},
+    "recibo_ferias": {"nome": "Recibo de férias", "icone": "home"},
+    "atestado_medico": {"nome": "Atestado médico", "icone": "file"},
+    "contrato_trabalho": {"nome": "Contrato de trabalho", "icone": "briefcase"},
+}
+TIPOS = tuple(TIPOS_INFO)
 
 # Tipo atribuído quando a confiança fica abaixo de CONF_MIN. Fica fora de TIPOS de propósito:
 # não é uma classe válida para a correção humana.
@@ -57,3 +60,6 @@ LLM_ESPERA = float(os.getenv("LLM_ESPERA", "1.5"))  # segundos; dobra a cada nov
 GEMINI_ANALISE_MODEL = os.getenv("GEMINI_ANALISE_MODEL", "gemini-3.5-flash")
 PONTO_MAX_PAGINAS = int(os.getenv("PONTO_MAX_PAGINAS", "6"))  # páginas (imagens) enviadas ao Gemini
 PONTO_TEXTO_MAX = int(os.getenv("PONTO_TEXTO_MAX", "20000"))  # caracteres de OCR enviados
+
+# CORS: origens permitidas, separadas por vírgula (padrão: dev server do Vite). Nunca "*" com credenciais.
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if o.strip()]
