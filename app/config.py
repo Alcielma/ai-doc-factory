@@ -31,3 +31,19 @@ MAX_TENTATIVAS = 3
 # Valores iniciais NÃO calibrados com dados do gerador: ajustar depois com scripts/avaliar_segmentacao.py.
 SEG_SIM_BAIXO = float(os.getenv("SEG_SIM_BAIXO", "0.15"))
 SEG_SIM_ALTO = float(os.getenv("SEG_SIM_ALTO", "0.60"))
+
+# Fronteira ambígua (Goal 1, passo 3): resposta do Jev (probabilidade de "mesmo documento") decidida em código.
+# Valores iniciais NÃO calibrados.
+SEG_LLM_CONTINUA = float(os.getenv("SEG_LLM_CONTINUA", "0.70"))  # >= : continua o documento
+SEG_LLM_ABRE = float(os.getenv("SEG_LLM_ABRE", "0.30"))  # <= : abre documento novo; no meio, fica ambíguo
+
+# LLMs. As chaves vêm só do ambiente (.env); nunca são gravadas em cache, log ou banco.
+CLASSIFICADOR = os.getenv("CLASSIFICADOR", "jev")  # "jev" (Jev + Gemini) ou "regras" (sem rede)
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+JEV_MODEL = os.getenv("JEV_MODEL", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+CACHE_DIR = os.getenv("CACHE_DIR", "/cache")
+LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "60"))
+LLM_TENTATIVAS = int(os.getenv("LLM_TENTATIVAS", "4"))
+LLM_ESPERA = float(os.getenv("LLM_ESPERA", "1.5"))  # segundos; dobra a cada nova tentativa
