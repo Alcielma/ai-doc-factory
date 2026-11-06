@@ -175,6 +175,8 @@ export const INITIAL_DETAILED_DOCUMENTS: DetailedDocument[] = [
 export const INITIAL_REVIEW_PENDING_DOCUMENTS: ReviewPendingDocument[] = [
   {
     id: 'rev-01',
+    loteId: 1,
+    startPage: 1,
     filename: 'scan_0045.jpg',
     issueType: 'baixa_qualidade',
     issueLabel: 'Baixa qualidade da imagem',
@@ -190,6 +192,8 @@ export const INITIAL_REVIEW_PENDING_DOCUMENTS: ReviewPendingDocument[] = [
   },
   {
     id: 'rev-02',
+    loteId: 1,
+    startPage: 1,
     filename: 'documento_sem_nome.pdf',
     issueType: 'conteudo_ilegivel',
     issueLabel: 'Conteúdo ilegível',
@@ -205,6 +209,8 @@ export const INITIAL_REVIEW_PENDING_DOCUMENTS: ReviewPendingDocument[] = [
   },
   {
     id: 'rev-03',
+    loteId: 1,
+    startPage: 1,
     filename: 'img_2231.png',
     issueType: 'confiança_baixa',
     issueLabel: 'Confiança baixa',

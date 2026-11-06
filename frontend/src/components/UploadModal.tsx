@@ -1,11 +1,13 @@
 import React, { useState } from 'react'
 import { X, UploadCloud, File, CheckCircle2, Loader2, AlertCircle } from 'lucide-react'
 import { apiService } from '../services/api'
+import type { Company } from '../types'
 
 interface UploadModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccessUpload: (filename: string, loteId: number) => void
+  companies?: Company[]
 }
 
 export const UploadModal: React.FC<UploadModalProps> = ({
@@ -41,7 +43,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         setIsSuccess(false)
         setFile(null)
         onClose()
-      }, 1500)
+      }, 1200)
     } catch (err) {
       setIsUploading(false)
       setError(err instanceof Error ? err.message : 'Falha ao enviar arquivo')
@@ -87,7 +89,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
               </span>
               <input
                 type="file"
-                accept=".pdf"
+                accept=".pdf,.png,.jpg,.jpeg,.tiff"
                 className="hidden"
                 onChange={handleFileChange}
               />
@@ -147,3 +149,4 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   )
 }
 
+export default UploadModal

@@ -229,6 +229,41 @@ const CategoryPage: React.FC<CategoryPageProps> = ({
 
                 {/* Metadata Badges / Tags */}
                 <div className="flex flex-wrap items-center gap-2 mt-3">
+                  {doc.metadata.cpfNumber && (
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[#f6f2f8] dark:bg-[#25172d] text-[#5b4d67] dark:text-[#c4b5cd] border border-[#ece4f1] dark:border-[#382343]">
+                      CPF: {doc.metadata.cpfNumber}
+                    </span>
+                  )}
+                  {doc.metadata.matricula && (
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[#f6f2f8] dark:bg-[#25172d] text-[#5b4d67] dark:text-[#c4b5cd] border border-[#ece4f1] dark:border-[#382343]">
+                      Matrícula: {doc.metadata.matricula}
+                    </span>
+                  )}
+                  {doc.metadata.dataAdmissao && (
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[#f6f2f8] dark:bg-[#25172d] text-[#5b4d67] dark:text-[#c4b5cd] border border-[#ece4f1] dark:border-[#382343]">
+                      Admissão: {doc.metadata.dataAdmissao}
+                    </span>
+                  )}
+                  {doc.metadata.dataExame && (
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[#f6f2f8] dark:bg-[#25172d] text-[#5b4d67] dark:text-[#c4b5cd] border border-[#ece4f1] dark:border-[#382343]">
+                      Exame: {doc.metadata.dataExame}
+                    </span>
+                  )}
+                  {doc.metadata.dataTermino && (
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[#f6f2f8] dark:bg-[#25172d] text-[#5b4d67] dark:text-[#c4b5cd] border border-[#ece4f1] dark:border-[#382343]">
+                      Término: {doc.metadata.dataTermino}
+                    </span>
+                  )}
+                  {doc.metadata.tipoPrazo && (
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[#f6f2f8] dark:bg-[#25172d] text-[#5b4d67] dark:text-[#c4b5cd] border border-[#ece4f1] dark:border-[#382343]">
+                      Prazo: {doc.metadata.tipoPrazo}
+                    </span>
+                  )}
+                  {doc.metadata.razaoSocial && (
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[#f6f2f8] dark:bg-[#25172d] text-[#5b4d67] dark:text-[#c4b5cd] border border-[#ece4f1] dark:border-[#382343]">
+                      Empresa: {doc.metadata.razaoSocial}
+                    </span>
+                  )}
                   {doc.metadata.registrationNumber && (
                     <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[#f6f2f8] dark:bg-[#25172d] text-[#5b4d67] dark:text-[#c4b5cd] border border-[#ece4f1] dark:border-[#382343]">
                       Nº de registro: {doc.metadata.registrationNumber}
@@ -242,11 +277,6 @@ const CategoryPage: React.FC<CategoryPageProps> = ({
                   {doc.metadata.expirationDate && (
                     <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[#f6f2f8] dark:bg-[#25172d] text-[#5b4d67] dark:text-[#c4b5cd] border border-[#ece4f1] dark:border-[#382343]">
                       Validade: {doc.metadata.expirationDate}
-                    </span>
-                  )}
-                  {doc.metadata.cpfNumber && (
-                    <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[#f6f2f8] dark:bg-[#25172d] text-[#5b4d67] dark:text-[#c4b5cd] border border-[#ece4f1] dark:border-[#382343]">
-                      CPF: {doc.metadata.cpfNumber}
                     </span>
                   )}
                   {doc.metadata.rgNumber && (
@@ -284,57 +314,71 @@ const CategoryPage: React.FC<CategoryPageProps> = ({
             </div>
 
             <div className="p-6 overflow-y-auto space-y-6">
-              {/* Score Geral */}
-              <div className="flex items-center justify-between p-4 rounded-2xl bg-[#f8f5fa] dark:bg-[#201326] border border-[#ece4f1] dark:border-[#382240]">
-                <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${
-                    selectedDocAnalysis.score_geral >= 85 ? 'bg-emerald-500' :
-                    selectedDocAnalysis.score_geral >= 65 ? 'bg-amber-500' : 'bg-red-500'
-                  }`}>
-                    {selectedDocAnalysis.score_geral}%
-                  </div>
-                  <div>
-                    <div className="text-sm font-bold text-[#2d0a33] dark:text-[#f8f5fc]">Score de Conformidade</div>
-                    <div className="text-[10px] text-[#6e6378] dark:text-[#a093a8]">Baseado em 4 dimensões de risco</div>
-                  </div>
+              {selectedDocAnalysis.estado === 'pendente' ? (
+                <div className="p-6 text-center rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 space-y-3">
+                  <Clock className="w-10 h-10 text-amber-500 mx-auto animate-pulse" />
+                  <h4 className="text-base font-bold text-[#2d0a33] dark:text-[#f8f5fc]">
+                    Análise em processamento
+                  </h4>
+                  <p className="text-xs text-[#6e6378] dark:text-[#a093a8] max-w-md mx-auto">
+                    Esta folha de ponto foi enviada para auditoria trabalhista pela IA e está aguardando conclusão no worker. Por favor, tente novamente em alguns instantes.
+                  </p>
                 </div>
-                {selectedDocAnalysis.requer_revisao && (
-                  <span className="px-3 py-1 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] font-bold border border-red-200 dark:border-red-800">
-                    Requer Revisão
-                  </span>
-                )}
-              </div>
-
-              {/* Divergências Encontradas */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-[#6e6378] dark:text-[#a093a8] uppercase tracking-wider">Divergências Identificadas</h4>
-                {selectedDocAnalysis.divergencias && selectedDocAnalysis.divergencias.length > 0 ? (
-                  <div className="grid gap-2">
-                    {selectedDocAnalysis.divergencias.map((div: any, idx: number) => (
-                      <div key={idx} className="flex items-start gap-3 p-3 rounded-xl border border-red-100 dark:border-red-900/20 bg-red-50/50 dark:bg-red-950/10">
-                        <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                        <div>
-                          <div className="text-xs font-bold text-red-800 dark:text-red-300">{div.tipo.replace(/_/g, ' ')}</div>
-                          <p className="text-[10px] text-red-700 dark:text-red-400 mt-0.5">{div.evidencia || 'Sem evidência detalhada'}</p>
-                        </div>
+              ) : (
+                <>
+                  {/* Score Geral */}
+                  <div className="flex items-center justify-between p-4 rounded-2xl bg-[#f8f5fa] dark:bg-[#201326] border border-[#ece4f1] dark:border-[#382240]">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${
+                        (selectedDocAnalysis.score_geral ?? 0) >= 85 ? 'bg-emerald-500' :
+                        (selectedDocAnalysis.score_geral ?? 0) >= 65 ? 'bg-amber-500' : 'bg-red-500'
+                      }`}>
+                        {selectedDocAnalysis.score_geral !== undefined ? `${selectedDocAnalysis.score_geral}%` : '--'}
                       </div>
-                    ))}
+                      <div>
+                        <div className="text-sm font-bold text-[#2d0a33] dark:text-[#f8f5fc]">Score de Conformidade</div>
+                        <div className="text-[10px] text-[#6e6378] dark:text-[#a093a8]">Baseado em 4 dimensões de risco</div>
+                      </div>
+                    </div>
+                    {selectedDocAnalysis.requer_revisao && (
+                      <span className="px-3 py-1 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] font-bold border border-red-200 dark:border-red-800">
+                        Requer Revisão
+                      </span>
+                    )}
                   </div>
-                ) : (
-                  <div className="flex items-center gap-2 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/20 bg-emerald-50/50 dark:bg-emerald-950/10">
-                    <CheckCircle className="w-4 h-4 text-emerald-500" />
-                    <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300">Nenhuma divergência crítica encontrada</span>
-                  </div>
-                )}
-              </div>
 
-              {/* Análise da IA */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-[#6e6378] dark:text-[#a093a8] uppercase tracking-wider">Parecer da Auditoria (IA)</h4>
-                <div className="p-4 rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] bg-white dark:bg-[#150c18] text-sm text-[#2d0a33] dark:text-[#f8f5fc] leading-relaxed italic">
-                  "{selectedDocAnalysis.analise}"
-                </div>
-              </div>
+                  {/* Divergências Encontradas */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-[#6e6378] dark:text-[#a093a8] uppercase tracking-wider">Divergências Identificadas</h4>
+                    {selectedDocAnalysis.divergencias && selectedDocAnalysis.divergencias.length > 0 ? (
+                      <div className="grid gap-2">
+                        {selectedDocAnalysis.divergencias.map((div: any, idx: number) => (
+                          <div key={idx} className="flex items-start gap-3 p-3 rounded-xl border border-red-100 dark:border-red-900/20 bg-red-50/50 dark:bg-red-950/10">
+                            <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                            <div>
+                              <div className="text-xs font-bold text-red-800 dark:text-red-300">{(div.tipo || '').replace(/_/g, ' ')}</div>
+                              <p className="text-[10px] text-red-700 dark:text-red-400 mt-0.5">{div.evidencia || 'Sem evidência detalhada'}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/20 bg-emerald-50/50 dark:bg-emerald-950/10">
+                        <CheckCircle className="w-4 h-4 text-emerald-500" />
+                        <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300">Nenhuma divergência crítica encontrada</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Análise da IA */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-[#6e6378] dark:text-[#a093a8] uppercase tracking-wider">Parecer da Auditoria (IA)</h4>
+                    <div className="p-4 rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] bg-white dark:bg-[#150c18] text-sm text-[#2d0a33] dark:text-[#f8f5fc] leading-relaxed italic">
+                      "{selectedDocAnalysis.analise || 'Sem parecer textual detalhado registrado.'}"
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
             
             <div className="p-4 border-t border-[#ebe5ef] dark:border-[#2f1e39] bg-[#fbf9fc] dark:bg-[#1f1325] flex justify-end">
