@@ -25,6 +25,7 @@ const ReviewDetailPanel: React.FC<DetailPanelProps> = ({
   const [selectedCategory, setSelectedCategory] = useState(doc.suggestedType)
   const [personName, setPersonName] = useState(doc.personName)
   const [extractedFields, setExtractedFields] = useState(doc.extractedFields)
+  const [currentPage, setCurrentPage] = useState(0)
 
   const handleRemoveField = (index: number) => {
     setExtractedFields((prev) => prev.filter((_, i) => i !== index))
@@ -34,129 +35,168 @@ const ReviewDetailPanel: React.FC<DetailPanelProps> = ({
     setExtractedFields((prev) => [...prev, { key: 'Campo', value: '' }])
   }
 
+  const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+  const imageUrl = `${API_URL}/api/lotes/${doc.loteId}/paginas/${doc.startPage + currentPage}/imagem`;
+
   return (
-    <div className="lg:col-span-7 rounded-2xl p-6 sm:p-7 border border-[#ebe5ef] dark:border-[#2f1e39] bg-white dark:bg-[#1a1120] shadow-xs space-y-6">
-      {/* Document Header */}
-      <div>
-        <h3 className="text-lg font-bold text-[#2d0a33] dark:text-[#f8f5fc]">
-          {doc.filename}
-        </h3>
-        <p className="text-xs sm:text-sm text-[#6e6378] dark:text-[#a093a8] mt-0.5">
-          Processado em {doc.processedDate} · {doc.timeAgo} · {doc.pages} página{doc.pages > 1 ? 's' : ''}
-        </p>
-      </div>
+    <div className="lg:col-span-7 space-y-6">
+      <div className="rounded-2xl p-6 sm:p-7 border border-[#ebe5ef] dark:border-[#2f1e39] bg-white dark:bg-[#1a1120] shadow-xs space-y-6">
+        {/* Document Header */}
+        <div className="flex justify-between items-start">
+          <div>
+            <h3 className="text-lg font-bold text-[#2d0a33] dark:text-[#f8f5fc]">
+              {doc.filename}
+            </h3>
+            <p className="text-xs sm:text-sm text-[#6e6378] dark:text-[#a093a8] mt-0.5">
+              Processado em {doc.processedDate} · {doc.timeAgo} · {doc.pages} página{doc.pages > 1 ? 's' : ''}
+            </p>
+          </div>
+        </div>
 
-      {/* Alert / Diagnosis Box (sem tom amarelo/marrom) */}
-      <div className="p-4 rounded-xl bg-[#f8f5fa] dark:bg-[#201326] border border-[#ece4f1] dark:border-[#382240] text-xs sm:text-sm space-y-1">
-        <p className="font-semibold text-[#2d0a33] dark:text-[#f8f5fc]">
-          {doc.issueDescription}
-        </p>
-        <p className="text-[#6e6378] dark:text-[#a093a8]">
-          Tipo sugerido pela IA: <strong className="font-bold text-[#9333ea] dark:text-[#d67bf3]">{doc.suggestedType}</strong> · confiança {Math.round(doc.suggestedConfidence * 100)}%
-        </p>
-      </div>
-
-      {/* Informações Extraídas Section */}
-      <div className="space-y-3">
-        <h4 className="text-sm font-bold text-[#2d0a33] dark:text-[#f8f5fc]">
-          Informações extraídas
-        </h4>
-
-        <div className="space-y-2">
-          {extractedFields.map((field, idx) => (
-            <div
-              key={idx}
-              className="flex items-center rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] overflow-hidden bg-white dark:bg-[#150c18]"
-            >
-              <div className="px-3.5 py-2 bg-[#f8f5fa] dark:bg-[#201224] border-r border-[#ebe5ef] dark:border-[#2f1e39] text-xs font-semibold text-[#6e6378] dark:text-[#a093a8] min-w-[70px]">
-                {field.key}
-              </div>
-              <input
-                type="text"
-                value={field.value}
-                onChange={(e) => {
-                  const val = e.target.value
-                  setExtractedFields((prev) =>
-                    prev.map((f, i) => (i === idx ? { ...f, value: val } : f))
-                  )
-                  if (field.key.toLowerCase() === 'nome') {
-                    setPersonName(val)
-                  }
-                }}
-                className="flex-1 px-3 py-2 text-xs sm:text-sm text-[#2d0a33] dark:text-white bg-transparent focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => handleRemoveField(idx)}
-                className="p-2 text-[#8f8298] hover:text-[#e11d48] transition-colors cursor-pointer"
+        {/* Visualizer Mock (Simulando o formato físico solicitado pelo usuário) */}
+        <div className="relative aspect-[3/4] w-full bg-[#f3f0f5] dark:bg-[#150c18] rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] overflow-hidden group shadow-inner">
+          <img 
+            src={imageUrl} 
+            alt="Documento" 
+            className="w-full h-full object-contain p-4"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = 'https://placehold.co/600x800?text=Imagem+indispon%C3%ADvel';
+            }}
+          />
+          
+          {doc.pages > 1 && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/50 backdrop-blur-md text-white text-[10px] font-bold">
+              <button 
+                onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))}
+                disabled={currentPage === 0}
+                className="hover:text-[#d67bf3] disabled:opacity-30 transition-colors"
               >
-                <X className="w-4 h-4" />
+                Anterior
+              </button>
+              <span>Página {currentPage + 1} de {doc.pages}</span>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.min(doc.pages - 1, prev + 1))}
+                disabled={currentPage === doc.pages - 1}
+                className="hover:text-[#d67bf3] disabled:opacity-30 transition-colors"
+              >
+                Próxima
               </button>
             </div>
-          ))}
+          )}
         </div>
 
-        <button
-          type="button"
-          onClick={handleAddField}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#9333ea] dark:text-[#d67bf3] hover:underline cursor-pointer pt-1"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Adicionar campo</span>
-        </button>
-      </div>
+        {/* Alert / Diagnosis Box (sem tom amarelo/marrom) */}
+        <div className="p-4 rounded-xl bg-[#f8f5fa] dark:bg-[#201326] border border-[#ece4f1] dark:border-[#382240] text-xs sm:text-sm space-y-1">
+          <p className="font-semibold text-[#2d0a33] dark:text-[#f8f5fc]">
+            {doc.issueDescription}
+          </p>
+          <p className="text-[#6e6378] dark:text-[#a093a8]">
+            Tipo sugerido pela IA: <strong className="font-bold text-[#9333ea] dark:text-[#d67bf3]">{doc.suggestedType}</strong> · confiança {Math.round(doc.suggestedConfidence * 100)}%
+          </p>
+        </div>
 
-      {/* Classification Inputs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-        <div>
-          <label className="block text-xs font-semibold text-[#6e6378] dark:text-[#a093a8] mb-1.5">
-            Tipo documental
-          </label>
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] bg-white dark:bg-[#150c18] text-[#2d0a33] dark:text-white text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#9333ea] cursor-pointer"
-          >
-            {availableCategories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
+        {/* Informações Extraídas Section */}
+        <div className="space-y-3">
+          <h4 className="text-sm font-bold text-[#2d0a33] dark:text-[#f8f5fc]">
+            Informações extraídas
+          </h4>
+
+          <div className="space-y-2">
+            {extractedFields.map((field, idx) => (
+              <div
+                key={idx}
+                className="flex items-center rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] overflow-hidden bg-white dark:bg-[#150c18]"
+              >
+                <div className="px-3.5 py-2 bg-[#f8f5fa] dark:bg-[#201224] border-r border-[#ebe5ef] dark:border-[#2f1e39] text-xs font-semibold text-[#6e6378] dark:text-[#a093a8] min-w-[70px]">
+                  {field.key}
+                </div>
+                <input
+                  type="text"
+                  value={field.value}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setExtractedFields((prev) =>
+                      prev.map((f, i) => (i === idx ? { ...f, value: val } : f))
+                    )
+                    if (field.key.toLowerCase() === 'nome') {
+                      setPersonName(val)
+                    }
+                  }}
+                  className="flex-1 px-3 py-2 text-xs sm:text-sm text-[#2d0a33] dark:text-white bg-transparent focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleRemoveField(idx)}
+                  className="p-2 text-[#8f8298] hover:text-[#e11d48] transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             ))}
-          </select>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleAddField}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#9333ea] dark:text-[#d67bf3] hover:underline cursor-pointer pt-1"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Adicionar campo</span>
+          </button>
         </div>
 
-        <div>
-          <label className="block text-xs font-semibold text-[#6e6378] dark:text-[#a093a8] mb-1.5">
-            Nome da pessoa
-          </label>
-          <input
-            type="text"
-            value={personName}
-            onChange={(e) => setPersonName(e.target.value)}
-            placeholder="Nome completo"
-            className="w-full px-3.5 py-2.5 rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] bg-white dark:bg-[#150c18] text-[#2d0a33] dark:text-white text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#9333ea]"
-          />
+        {/* Classification Inputs */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+          <div>
+            <label className="block text-xs font-semibold text-[#6e6378] dark:text-[#a093a8] mb-1.5">
+              Tipo documental
+            </label>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] bg-white dark:bg-[#150c18] text-[#2d0a33] dark:text-white text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#9333ea] cursor-pointer"
+            >
+              {availableCategories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-[#6e6378] dark:text-[#a093a8] mb-1.5">
+              Nome da pessoa
+            </label>
+            <input
+              type="text"
+              value={personName}
+              onChange={(e) => setPersonName(e.target.value)}
+              placeholder="Nome completo"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] bg-white dark:bg-[#150c18] text-[#2d0a33] dark:text-white text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#9333ea]"
+            />
+          </div>
         </div>
-      </div>
 
-      {/* Action Buttons (sem favicon ou logo) */}
-      <div className="flex flex-wrap items-center gap-3 pt-3">
-        <button
-          type="button"
-          onClick={() => onConfirm(doc.id, selectedCategory, personName)}
-          className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-white bg-[#3e0b48] hover:bg-[#52105e] dark:bg-[#9917a2] dark:hover:bg-[#b01ebb] flex items-center gap-2 shadow-2xs transition-all cursor-pointer"
-        >
-          <Check className="w-4 h-4 stroke-[2.5]" />
-          <span>Confirmar classificação</span>
-        </button>
+        {/* Action Buttons (sem favicon ou logo) */}
+        <div className="flex flex-wrap items-center gap-3 pt-3">
+          <button
+            type="button"
+            onClick={() => onConfirm(doc.id, selectedCategory, personName)}
+            className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-white bg-[#3e0b48] hover:bg-[#52105e] dark:bg-[#9917a2] dark:hover:bg-[#b01ebb] flex items-center gap-2 shadow-2xs transition-all cursor-pointer"
+          >
+            <Check className="w-4 h-4 stroke-[2.5]" />
+            <span>Confirmar classificação</span>
+          </button>
 
-        <button
-          type="button"
-          onClick={() => onAcceptSuggestion(doc)}
-          className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-[#d88cf5] dark:border-[#c026d3] text-[#7c1782] dark:text-[#f38df9] hover:bg-[#f6ebfa] dark:hover:bg-[#281530] flex items-center gap-2 transition-all cursor-pointer"
-        >
-          <span>Aceitar sugestão ({doc.suggestedType})</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => onAcceptSuggestion(doc)}
+            className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-[#d88cf5] dark:border-[#c026d3] text-[#7c1782] dark:text-[#f38df9] hover:bg-[#f6ebfa] dark:hover:bg-[#281530] flex items-center gap-2 transition-all cursor-pointer"
+          >
+            <span>Aceitar sugestão ({doc.suggestedType})</span>
+          </button>
+        </div>
       </div>
     </div>
   )
