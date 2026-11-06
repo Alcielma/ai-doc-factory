@@ -191,3 +191,19 @@ def test_dimensao_indeterminada_nao_entra_no_maximo_e_pede_revisao():
     assert score_geral({"x": {"score": 1, "n_niveis": 3, "confianca": 0.1}})["score_geral"] is None
     with pytest.raises(ValueError):
         score_geral({"x": {"score": 4, "n_niveis": 4, "confianca": 0.9}})
+
+
+@pytest.mark.parametrize("item", [
+    {"data": "2025-11-03", "pares": [None]},
+    {"data": "2025-11-03", "pares": "08001700"},
+    {"data": "2025-11-03", "pares": [["08:00", "17:00", "x"]]},
+    {"data": "2025-11-03", "pares": [["2025-11-03T08:00:00+00:00", "17:00"]]},   # fuso x sem fuso
+    {"data": "2025-11-03", "pares": [[8, 17]]},
+    {"data": None, "pares": []},
+    "texto solto", None, 42, ["08:00", "17:00"],
+])
+def test_entrada_de_llm_malformada_vira_marcacao_invalida_sem_excecao(item):
+    r = apurar_folha([item, regular("2025-11-04")], PERFIL)
+    assert [d["tipo"] for d in r["divergencias"]] == ["marcacao_invalida"]
+    assert [d["data"] for d in r["dias"]] == ["2025-11-04"]
+    detectar_ponto_britanico([item, regular("2025-11-04")])  # também não pode levantar

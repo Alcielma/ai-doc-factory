@@ -54,7 +54,10 @@ def _marca(dia, texto):
     s = str(texto).strip()
     try:
         if "T" in s:
-            return datetime.fromisoformat(s)
+            iso = datetime.fromisoformat(s)
+            if iso.tzinfo is not None:  # misturar com horários sem fuso lançaria TypeError
+                raise _Invalida(f"horário com fuso não suportado: {texto!r}")
+            return iso
         mais = s.endswith("+1")
         hh, mm = s[:-2].split(":") if mais else s.split(":")
         base = datetime.combine(dia, time(int(hh), int(mm)))
@@ -64,11 +67,19 @@ def _marca(dia, texto):
 
 
 def _pares_do_dia(item):
-    """Devolve (data, [(entrada, saida)]) ou levanta _Invalida com o motivo."""
+    """Devolve (data, [(entrada, saida)]) ou levanta _Invalida com o motivo.
+
+    A entrada vem de LLM: qualquer formato inesperado vira _Invalida, nunca outra exceção.
+    """
+    if not isinstance(item, dict):
+        raise _Invalida("item do dia não é um objeto")
     dia = _data(item.get("data"))
+    lista = item.get("pares") or []
+    if not isinstance(lista, (list, tuple)):
+        raise _Invalida("pares não é uma lista")
     pares = []
-    for par in item.get("pares") or []:
-        if len(par) != 2:
+    for par in lista:
+        if not isinstance(par, (list, tuple)) or len(par) != 2:
             raise _Invalida("par de marcações malformado")
         ent, sai = _marca(dia, par[0]), _marca(dia, par[1])
         if ent is None and sai is None:
@@ -125,7 +136,7 @@ def apurar_folha(marcacoes, perfil, previstos=None):
             dia, pares = _pares_do_dia(item)
         except _Invalida as e:
             try:
-                dia_ref = _data(item.get("data"))
+                dia_ref = _data(item.get("data")) if isinstance(item, dict) else None
             except _Invalida:
                 dia_ref = None
             divs.append({"tipo": "marcacao_invalida", "data": dia_ref.isoformat() if dia_ref else None,
@@ -146,9 +157,12 @@ def apurar_folha(marcacoes, perfil, previstos=None):
         dentro = 0 < bruto <= p["tolerancia_dia_min"]
         prev = previstos.get(dia.isoformat())
         flat = [m for par in pares for m in par]
-        if dentro and prev and len(prev) == len(flat):
-            alvo = [_marca(dia, h) for h in prev]
-            dentro = all(abs(_minutos(m - a)) <= p["tolerancia_marcacao_min"] for m, a in zip(flat, alvo))
+        if dentro and isinstance(prev, (list, tuple)) and len(prev) == len(flat):
+            try:
+                alvo = [_marca(dia, h) for h in prev]
+            except _Invalida:
+                alvo = None  # previsto ilegível: cai no teto diário
+            dentro = alvo is None or all(abs(_minutos(m - a)) <= p["tolerancia_marcacao_min"] for m, a in zip(flat, alvo))
         extras = 0.0 if (bruto <= 0 or dentro) else bruto
 
         noturno = _noturno_real(pares, p["noturno_inicio_min"], p["noturno_fim_min"])
