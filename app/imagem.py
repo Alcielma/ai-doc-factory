@@ -4,7 +4,7 @@ import warnings
 
 from PIL import Image, ImageOps
 
-FORMATOS = {"JPEG", "PNG", "TIFF"}
+FORMATOS = {"JPEG", "MPO", "PNG", "TIFF"}
 # O OCR rasteriza a 150 dpi (app.ocr.DPI). Gravar o PDF com a mesma resolução faz cada página voltar
 # com exatamente a largura e a altura em pixels da imagem original: nada encolhe nem é reamostrado.
 DPI_PDF = 150.0
@@ -34,7 +34,9 @@ def imagem_para_pdf(dados: bytes) -> bytes:
                 if im.format not in FORMATOS:
                     raise ArquivoInvalido("formato não suportado: envie PDF, JPEG, PNG ou TIFF")
                 paginas = []
-                for n in range(getattr(im, "n_frames", 1)):
+                # MPO é uma foto JPEG com quadros extras (miniaturas, profundidade): só o primeiro conta
+                quadros = 1 if im.format in ("JPEG", "MPO") else getattr(im, "n_frames", 1)
+                for n in range(quadros):
                     im.seek(n)
                     quadro = ImageOps.exif_transpose(im)  # corrige a orientação de fotos de celular
                     paginas.append(_para_rgb(quadro))  # convert() também carrega os pixels (detecta truncamento)

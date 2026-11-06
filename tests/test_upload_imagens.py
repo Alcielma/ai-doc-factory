@@ -56,6 +56,15 @@ def test_exif_rotacionado_e_corrigido():
     assert convert_from_bytes(pdf, dpi=150)[0].size == (400, 600)
 
 
+def test_mpo_usa_so_o_primeiro_quadro():
+    q1, q2 = _imagem((900, 1200)), _imagem((300, 400), "gray")
+    dados = _bytes(q1, "MPO", save_all=True, append_images=[q2])
+    with Image.open(io.BytesIO(dados)) as im:
+        assert im.format == "MPO" and im.n_frames == 2
+    paginas = convert_from_bytes(imagem_para_pdf(dados), dpi=150)
+    assert [p.size for p in paginas] == [q1.size]
+
+
 def test_png_com_transparencia_vira_fundo_branco():
     rgba = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
     pagina = convert_from_bytes(imagem_para_pdf(_bytes(rgba, "PNG")), dpi=150)[0]
