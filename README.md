@@ -177,7 +177,7 @@ Definidas no `.env` (modelo em `.env.example`), repassadas aos containers pelo `
 | `CONF_MIN` | `0.50` | Abaixo disso o tipo vira `desconhecido` e vai para revisão |
 | `CLASSIFICADOR` | `jev` | `jev` (Jev + Gemini) ou `regras` (sem rede) |
 | `OPENROUTER_API_KEY` | vazio | Chave do OpenRouter (Jev). Só no `.env` |
-| `JEV_MODEL` | vazio | Modelo do Jev |
+| `JEV_MODEL` | vazio | Modelo do Jev. Testado com `typesafe/jev-1.13` |
 | `GEMINI_API_KEY` | vazio | Chave do Google AI Studio. Só no `.env` |
 | `GEMINI_MODEL` | `gemini-3.5-flash` | Modelo da segunda opinião |
 
