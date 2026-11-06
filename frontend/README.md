@@ -1,75 +1,51 @@
-# React + TypeScript + Vite
+# Frontend - AI Doc Factory
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Este é o frontend da aplicação **AI Doc Factory**, uma plataforma para processamento, classificação e análise de conformidade de documentos utilizando Inteligência Artificial.
 
-Currently, two official plugins are available:
+## 🏗️ Arquitetura e Organização
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+O projeto segue uma arquitetura modular com separação rigorosa de responsabilidades, facilitando a manutenção e escalabilidade.
 
-## React Compiler
+### Estrutura de Pastas
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- `src/pages`: Componentes que representam as telas principais da aplicação (HomePage, CategoryPage, ManualReviewPage).
+- `src/components`: Componentes de UI reutilizáveis e modulares (Header, Cards, Modais, etc.).
+- `src/services`: Camada de comunicação técnica. Contém o `api.ts` para chamadas ao backend.
+- `src/hooks`: Lógica de estado e efeitos encapsulada para reutilização.
+- `src/utils`: Funções puras, formatadores e processamentos independentes.
+- `src/data`: Dados de inicialização e mocks para desenvolvimento.
+- `src/types.ts`: Definições de interfaces e tipos globais (TypeScript).
 
-## Expanding the ESLint configuration
+## 🛠️ Tecnologias Principais
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **React + Vite**: Framework e ferramenta de build.
+- **TypeScript**: Tipagem estática para maior segurança no desenvolvimento.
+- **Tailwind CSS**: Estilização baseada em utilitários para UI responsiva.
+- **Lucide React**: Biblioteca de ícones.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## 📐 Convenções do Projeto
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Estilo de Código
+- **Separar Lógica de UI**: Sempre que possível, mova lógicas complexas para hooks ou serviços.
+- **Componentes Funcionais**: Preferência total por componentes funcionais com Hooks.
+- **Path Aliases**: Utilização de `@/` para facilitar imports organizados (configurado no `tsconfig`).
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Design & UX
+- **Profundidade**: Uso de sombras multi-camadas (efeito "elevado") e cards com bordas arredondadas.
+- **Responsividade**: Interfaces fluidas que se adaptam do desktop ao mobile.
+- **Simulação Física**: Visualização de documentos inspirada em formatos reais (A4).
 
-```
+## 🚀 Integração com Backend
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+A comunicação é feita via `fetch` centralizada em `src/services/api.ts`.
+As variáveis de ambiente são gerenciadas via arquivo `.env`:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- `VITE_API_URL`: Endereço do servidor backend (ex: http://127.0.0.1:8000).
+- `VITE_API_PREFIX`: Prefixo das rotas (ex: /api).
+- `VITE_ENABLE_MOCK_LOGIN`: Habilita bypass de autenticação para desenvolvimento.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 📝 Scripts Disponíveis
 
-```
+- `npm run dev`: Inicia o servidor de desenvolvimento.
+- `npm run build`: Gera o build de produção otimizado.
+- `npm run lint`: Executa a verificação do linter.

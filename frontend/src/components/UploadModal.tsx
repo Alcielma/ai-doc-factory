@@ -1,10 +1,11 @@
 import React, { useState } from 'react'
-import { X, UploadCloud, File, CheckCircle2, Loader2 } from 'lucide-react'
+import { X, UploadCloud, File, CheckCircle2, Loader2, AlertCircle } from 'lucide-react'
+import { apiService } from '../services/api'
 
 interface UploadModalProps {
   isOpen: boolean
   onClose: () => void
-  onSuccessUpload: (filename: string) => void
+  onSuccessUpload: (filename: string, loteId: number) => void
 }
 
 export const UploadModal: React.FC<UploadModalProps> = ({
@@ -15,28 +16,36 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [file, setFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   if (!isOpen) return null
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0])
+      setError(null)
     }
   }
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (!file) return
     setIsUploading(true)
-    setTimeout(() => {
+    setError(null)
+
+    try {
+      const response = await apiService.uploadLote(file)
       setIsUploading(false)
       setIsSuccess(true)
       setTimeout(() => {
-        onSuccessUpload(file.name)
+        onSuccessUpload(file.name, response.lote_id)
         setIsSuccess(false)
         setFile(null)
         onClose()
-      }, 1200)
-    }, 1500)
+      }, 1500)
+    } catch (err) {
+      setIsUploading(false)
+      setError(err instanceof Error ? err.message : 'Falha ao enviar arquivo')
+    }
   }
 
   return (
@@ -84,7 +93,16 @@ export const UploadModal: React.FC<UploadModalProps> = ({
               />
             </label>
 
-            {file && (
+            {error && (
+              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 flex items-center gap-2 text-red-600 dark:text-red-400">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span className="text-[11px] font-medium leading-tight">
+                  {error}
+                </span>
+              </div>
+            )}
+
+            {file && !error && (
               <div className="p-3 rounded-xl bg-[#f6ebfa] dark:bg-[#281530] border border-[#d88cf5]/40 dark:border-[#c026d3]/40 flex items-center justify-between">
                 <div className="flex items-center gap-2 overflow-hidden">
                   <File className="w-4 h-4 text-[#9333ea] dark:text-[#d67bf3] shrink-0" />
