@@ -1,10 +1,13 @@
 """Segmentação de lote em documentos, sem LLM. Função pura: lista de textos por página -> documentos."""
+import logging
 import math
 import re
 from collections import Counter
 from dataclasses import dataclass
 
-from app import config
+from app import config, llm, prompts
+
+log = logging.getLogger(__name__)
 
 # "Página 1 de 3", tolerando caixa, espaços, "Pag."/"Pág", "1/3" e confusões comuns do OCR (l/I/|/O no lugar de 1/0).
 _PAGINACAO = re.compile(r"\bp[aá4]g(?:ina|\.)?\s*([0-9lLiI|oO]{1,3})\s*(?:de|/)\s*([0-9lLiI|oO]{1,3})(?!\w)", re.IGNORECASE)
@@ -61,11 +64,24 @@ def _cosseno(a: dict[str, float], b: dict[str, float]) -> float:
 
 
 def perguntar_llm_mesmo_documento(fim_anterior: str, inicio_atual: str) -> bool | None:
-    """Faixa ambígua: 'estas duas páginas pertencem ao mesmo documento?'.
+    """Faixa ambígua: 'estas duas páginas pertencem ao mesmo documento?' (Sim/Não 'noul' do Jev).
 
-    PONTO ÚNICO onde o LLM entrará (Sim/Não). Sem LLM nesta etapa devolve None ("sem resposta"),
-    o que faz o chamador abrir documento novo e marcar ambiguo=True.
+    True = continua; False = abre documento novo; None = meio da faixa ou LLM indisponível (o chamador abre
+    documento novo e marca ambiguo=True). Os limiares são decididos aqui, em código (config.SEG_LLM_*).
+    Nunca levanta por falha do LLM. Faz chamada de rede: não chamar dentro de transação de banco.
     """
+    if config.CLASSIFICADOR == "regras":
+        return None  # modo sem rede: nenhum trecho do documento sai do sistema
+    estado = {"pagina_anterior": {"fim": fim_anterior}, "pagina_atual": {"inicio": inicio_atual}}
+    try:
+        p = llm.jev_sim_nao(estado, prompts.PERGUNTA_FRONTEIRA, prompts.CRITERIOS_FRONTEIRA)
+    except llm.LLMErro as e:
+        log.warning("fronteira: LLM indisponível (%s); mantendo ambíguo", e)
+        return None
+    if p >= config.SEG_LLM_CONTINUA:
+        return True
+    if p <= config.SEG_LLM_ABRE:
+        return False
     return None
 
 
