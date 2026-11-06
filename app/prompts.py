@@ -88,7 +88,7 @@ CRITERIOS_FRONTEIRA = {
 # --- Análise de folha de ponto (Goal 6) ---
 # Mudou qualquer texto abaixo, suba a versão: ela é gravada em analise_ponto.
 VERSAO_PROMPT_PONTO_GEMINI = "gemini-ponto-v1"
-VERSAO_PROMPT_PONTO_JEV = "jev-ponto-v1"
+VERSAO_PROMPT_PONTO_JEV = "jev-ponto-v2"
 
 
 def prompt_gemini_ponto(texto: str, perfil_json: str, tipos: tuple) -> str:
@@ -136,9 +136,9 @@ PERGUNTAS_PONTO = {
             "descanso (dentro da jornada e entre jornadas) descreve a folha?" + AVISO_ANALISE),
         "criteria": [
             "Nenhum dia com intervalo dentro da jornada insuficiente e nenhum descanso entre jornadas menor que 11 horas",
-            "Poucos dias com intervalo dentro da jornada ou entre jornadas insuficiente, com falta pequena",
-            "Vários dias com intervalo insuficiente, mas não na maior parte do período",
-            "Intervalo insuficiente na maior parte do período, ou faltas grandes de intervalo",
+            "Só faltas pequenas de intervalo dentro da jornada (de poucos minutos), em qualquer número de dias, e nenhum descanso entre jornadas menor que 11 horas",
+            "Faltas maiores de intervalo dentro da jornada em alguns ou vários dias, ou algum descanso entre jornadas menor que 11 horas",
+            "Faltas maiores de intervalo dentro da jornada na maior parte dos dias, ou vários descansos entre jornadas menores que 11 horas",
         ],
     },
     "descanso": {

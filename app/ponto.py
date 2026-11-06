@@ -20,6 +20,7 @@ CONFIG_PONTO = {
     "britanico_variacao_max_min": 5,   # variação máxima (máx - mín) por marcação para considerar "uniforme"
     "britanico_min_dias": 10,          # abaixo disso, não conclui
     "britanico_fracao_min_dias": 0.9,  # fração de dias "uniformes" a partir da qual há sinal (não calibrado)
+    "falta_intervalo_pequena_max_min": 10,  # faltas de intervalo até este valor contam como "pequenas" para o Jev
     "conf_min_dimensao": 0.5,          # confiança mínima do Jev por dimensão no score
 }
 
@@ -369,6 +370,7 @@ def resumir_contagens(apuracao, britanico):
     def maior(lista):
         return max((d["minutos"] for d in lista), default=0)
 
+    pequena = CONFIG_PONTO["falta_intervalo_pequena_max_min"]
     validos = len(apuracao["dias"])
     invalidos = apuracao["totais"]["dias_invalidos"]
     extras, semanas = de("horas_extras_acima_limite"), de("semana_acima_limite")
@@ -388,6 +390,9 @@ def resumir_contagens(apuracao, britanico):
         "intervalos": {
             "dias_analisados": validos, "dias_com_intervalo_intrajornada_insuficiente": len(intra),
             "maior_falta_de_intervalo_min": maior(intra),
+            "dias_com_falta_de_intervalo_pequena": sum(d["minutos"] <= pequena for d in intra),
+            "dias_com_falta_de_intervalo_maior": sum(d["minutos"] > pequena for d in intra),
+            "limite_da_falta_pequena_min": pequena,
             "dias_com_interjornada_menor_que_11h": len(inter), "maior_falta_de_interjornada_min": maior(inter),
             "dias_com_intervalo_nao_verificado": len(apuracao.get("intervalos_nao_verificados", [])),
         },

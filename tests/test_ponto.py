@@ -189,6 +189,17 @@ def test_britanico_horarios_variados_nao_sinalizam():
     assert r["conclusivo"] and r["sinal_risco"] is False
 
 
+def test_contagens_para_o_jev_separam_falta_pequena_de_falta_maior():
+    from app.ponto import resumir_contagens
+    folha = [dia("2025-11-04", ("08:00", "12:00"), ("12:57", "17:57")),   # falta de 3 min
+             dia("2025-11-05", ("08:00", "12:00"), ("12:30", "17:30"))]   # falta de 30 min
+    ap = apurar_folha(folha, PERFIL)
+    c = resumir_contagens(ap, detectar_ponto_britanico(folha))
+    assert c["intervalos"]["dias_com_falta_de_intervalo_pequena"] == 1
+    assert c["intervalos"]["dias_com_falta_de_intervalo_maior"] == 1 and c["intervalos"]["maior_falta_de_intervalo_min"] == 30
+    assert c["registro"]["ponto_britanico"] == "inconclusivo" and c["horas_extras"]["dias_analisados"] == 2
+
+
 def test_diferenca_com_gemini_registrada_e_vale_o_codigo():
     cod = apurar_folha([dia("2025-11-03", ("08:00", "12:00"), ("12:30", "20:30"))], PERFIL)
     gem = [{"tipo": "horas_extras_acima_limite", "data": "2025-11-03", "minutos": 150},
