@@ -33,6 +33,9 @@ MAX_TENTATIVAS = 3
 # Valores iniciais NÃO calibrados com dados do gerador: ajustar depois com scripts/avaliar_segmentacao.py.
 SEG_SIM_BAIXO = float(os.getenv("SEG_SIM_BAIXO", "0.15"))
 SEG_SIM_ALTO = float(os.getenv("SEG_SIM_ALTO", "0.60"))
+# Página com até este número de caracteres alfanuméricos (e sem "Página k de N") conta como branca: cobre o
+# verso com só um carimbo ("PROTOCOLADO" = 11). Valor tirado do lote de ajuste L0001: NÃO calibrado.
+SEG_BRANCO_MAX_ALNUM = int(os.getenv("SEG_BRANCO_MAX_ALNUM", "12"))
 
 # Fronteira ambígua (Goal 1, passo 3): resposta do Jev (probabilidade de "mesmo documento") decidida em código.
 # Valores iniciais NÃO calibrados.

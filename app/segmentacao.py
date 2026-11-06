@@ -38,7 +38,27 @@ def paginacao(texto: str) -> tuple[int, int] | None:
 
 
 def em_branco(texto: str) -> bool:
-    return sum(c.isalnum() for c in texto) < 3  # ruído de scanner não conta como conteúdo
+    """Página sem conteúdo: ruído de scanner (< 3 caracteres alfanuméricos) ou só um carimbo curto
+    (até SEG_BRANCO_MAX_ALNUM, ex.: 'PROTOCOLADO'). Página com 'Página k de N' nunca é branca, porque
+    isso é conteúdo de documento. O texto continua gravado na página (busca); só a segmentação o ignora."""
+    n = sum(c.isalnum() for c in texto)
+    if n < 3:
+        return True
+    return n <= config.SEG_BRANCO_MAX_ALNUM and paginacao(texto) is None
+
+
+# CNPJ tolerante a OCR: separadores trocados, ausentes ou duplicados entre os grupos 2.3.3/4-2.
+_CNPJ = re.compile(r"(?<!\d)(\d{2})[^\d\n]{0,2}(\d{3})[^\d\n]{0,2}(\d{3})[^\d\n]{0,3}(\d{4})[^\d\n]{0,3}(\d{2})(?!\d)")
+
+
+def cnpj(texto: str) -> str | None:
+    """Primeiro CNPJ do texto, só com os 14 dígitos, ou None. Nunca levanta."""
+    try:
+        m = _CNPJ.search(texto)
+        return "".join(m.groups()) if m else None
+    except Exception:  # defensivo: um texto estranho não pode derrubar o lote
+        log.warning("falha ao extrair CNPJ; ignorando")
+        return None
 
 
 def _tokens(texto: str) -> Counter:
@@ -86,10 +106,14 @@ def perguntar_llm_mesmo_documento(fim_anterior: str, inicio_atual: str) -> bool 
 
 
 def segmentar(textos: list[str]) -> list[Documento]:
-    """Cascata: branco herda -> 'Página k de N' -> TF-IDF -> ambíguo (LLM, hoje abre novo e marca)."""
+    """Cascata: branco/carimbo herda -> 'Página k de N' -> CNPJ + TF-IDF -> ambíguo (Jev; sem resposta abre e marca).
+
+    Sem paginação: similaridade alta continua; CNPJ diferente abre; similaridade baixa abre, exceto com o
+    mesmo CNPJ, que vai para a pergunta ao Jev junto com a faixa ambígua."""
     if not textos:
         return []
     vetores = _vetores_tfidf(textos)
+    cnpjs = [cnpj(t) for t in textos]
     inicios: list[tuple[int, bool]] = [(0, False)]  # (índice da página, ambíguo)
     ref = None  # última página não vazia do documento corrente
     if not em_branco(textos[0]):
@@ -109,11 +133,14 @@ def segmentar(textos: list[str]) -> list[Documento]:
             pass  # continua
         else:
             sim = _cosseno(vetores[ref], vetores[i])
-            if sim < config.SEG_SIM_BAIXO:
-                inicios.append((i, False))
-            elif sim >= config.SEG_SIM_ALTO:
+            conhecidos = cnpjs[ref] is not None and cnpjs[i] is not None
+            if sim >= config.SEG_SIM_ALTO:
                 pass
-            else:
+            elif conhecidos and cnpjs[ref] != cnpjs[i]:
+                inicios.append((i, False))  # outra empresa: abre, sem perguntar
+            elif sim < config.SEG_SIM_BAIXO and not (conhecidos and cnpjs[ref] == cnpjs[i]):
+                inicios.append((i, False))
+            else:  # faixa ambígua, ou similaridade baixa com o MESMO CNPJ (ex.: tabela contínua)
                 mesmo = perguntar_llm_mesmo_documento(textos[ref][-500:], texto[:500])
                 if mesmo is None:
                     inicios.append((i, True))
