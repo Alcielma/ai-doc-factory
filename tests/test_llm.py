@@ -186,6 +186,15 @@ def test_fronteira_limiares_em_codigo(rede, p, esperado):
     assert "`pagina_atual.inicio`" in corpo["questions"]["q"]["instructions"]
 
 
+def test_fronteira_em_modo_regras_nao_chama_a_rede(monkeypatch):
+    monkeypatch.setattr(config, "CLASSIFICADOR", "regras")
+
+    def proibido(*a, **k):
+        pytest.fail("jev_sim_nao chamado com CLASSIFICADOR=regras")
+    monkeypatch.setattr(llm, "jev_sim_nao", proibido)
+    assert segmentacao.perguntar_llm_mesmo_documento("fim", "inicio") is None
+
+
 def test_fronteira_falha_do_llm_devolve_none(rede):
     rede["jev"] += [resp(500)] * config.LLM_TENTATIVAS
     assert segmentacao.perguntar_llm_mesmo_documento("a", "b") is None

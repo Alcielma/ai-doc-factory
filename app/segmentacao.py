@@ -70,6 +70,8 @@ def perguntar_llm_mesmo_documento(fim_anterior: str, inicio_atual: str) -> bool 
     documento novo e marca ambiguo=True). Os limiares são decididos aqui, em código (config.SEG_LLM_*).
     Nunca levanta por falha do LLM. Faz chamada de rede: não chamar dentro de transação de banco.
     """
+    if config.CLASSIFICADOR == "regras":
+        return None  # modo sem rede: nenhum trecho do documento sai do sistema
     estado = {"pagina_anterior": {"fim": fim_anterior}, "pagina_atual": {"inicio": inicio_atual}}
     try:
         p = llm.jev_sim_nao(estado, prompts.PERGUNTA_FRONTEIRA, prompts.CRITERIOS_FRONTEIRA)
