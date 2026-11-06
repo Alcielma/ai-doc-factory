@@ -1,0 +1,68 @@
+x-app: &app
+  build: .
+  environment:
+    DATABASE_URL: postgresql://${POSTGRES_USER:-docfactory}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-docfactory}
+    REDIS_URL: redis://redis:6379/0
+    DATA_DIR: /data
+    CONF_AUTO: ${CONF_AUTO:-0.85}
+    CONF_MIN: ${CONF_MIN:-0.50}
+  volumes:
+    - dados:/data
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+
+x-worker-health: &worker-health
+  test: ["CMD", "python", "-c", "import os,redis; redis.Redis.from_url(os.environ['REDIS_URL']).ping()"]
+  interval: 10s
+  timeout: 5s
+  retries: 5
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-docfactory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: ${POSTGRES_DB:-docfactory}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    <<: *app
+    command: uvicorn app.api:app --host 0.0.0.0 --port 8000
+    ports:
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker_ocr_seg:
+    <<: *app
+    command: python -m app.worker segmentar_lote
+    healthcheck: *worker-health
+
+  worker_classify:
+    <<: *app
+    command: python -m app.worker classificar_documento
+    healthcheck: *worker-health
+
+volumes:
+  pgdata:
+  dados:
