@@ -34,6 +34,10 @@ def criar_lote(arquivo: UploadFile = File(...)):
         ).fetchone()
         if row is None:  # mesmo PDF já enviado: devolve o existente
             id_, estado = conn.execute("SELECT id, estado FROM lote WHERE sha256 = %s", (sha,)).fetchone()
+            if estado == "recebido":
+                # o enfileirar pode ter falhado no envio original; job duplicado é aceitável
+                # porque os handlers são idempotentes
+                enfileirar(r, config.FILA_SEGMENTAR, {"lote_id": id_})
             return {"lote_id": id_, "estado": estado, "existente": True}
         pasta = Path(config.DATA_DIR) / f"lote_{row[0]}"
         pasta.mkdir(parents=True, exist_ok=True)
