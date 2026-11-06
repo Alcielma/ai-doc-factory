@@ -34,6 +34,13 @@ export interface DetailedDocument {
     cpfNumber?: string
     rgNumber?: string
     address?: string
+    matricula?: string
+    dataAdmissao?: string
+    dataExame?: string
+    dataTermino?: string
+    tipoPrazo?: string
+    cnpjPrestadora?: string
+    razaoSocial?: string
   }
 }
 
@@ -48,8 +55,11 @@ export interface ReviewPendingDocument {
   processedDate: string
   pages: number
   startPage: number
+  endPage?: number
+  imageUrl?: string
   issueDescription: string
   suggestedType: string
+  suggestedTypeSlug?: string
   suggestedConfidence: number
   extractedFields: { key: string; value: string }[]
   personName: string
