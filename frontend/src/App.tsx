@@ -1,19 +1,17 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Header } from './components/Header'
-import { ManualReviewBanner } from './components/ManualReviewBanner'
-import { MetricsCard } from './components/MetricsCard'
-import { FilterBar, type FilterType } from './components/FilterBar'
-import { FolderCard } from './components/FolderCard'
 import { BackgroundWave } from './components/BackgroundWave'
-import { CategoryView } from './components/CategoryView'
-import { ManualReviewView } from './components/ManualReviewView'
 import { UploadModal } from './components/UploadModal'
+import HomePage from './pages/HomePage'
+import CategoryPage from './pages/CategoryPage'
+import ManualReviewPage from './pages/ManualReviewPage'
 import {
   INITIAL_CATEGORIES,
   INITIAL_DETAILED_DOCUMENTS,
   INITIAL_REVIEW_PENDING_DOCUMENTS,
 } from './data/mockData'
 import type { DocumentCategory, DetailedDocument, ReviewPendingDocument } from './types'
+import type { FilterType } from './components/FilterBar'
 
 export function App() {
   // Theme state: defaults to true (Dark Mode)
@@ -221,7 +219,7 @@ export function App() {
       <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 relative z-10">
         {/* VIEW 1: CATEGORIA ESPECÍFICA (Ex: CNH) */}
         {currentView === 'categoria' && selectedCategory && (
-          <CategoryView
+          <CategoryPage
             category={selectedCategory}
             documents={categoryDocuments}
             onBack={handleBackToHome}
@@ -230,7 +228,7 @@ export function App() {
 
         {/* VIEW 2: REVISÃO MANUAL */}
         {currentView === 'revisao' && (
-          <ManualReviewView
+          <ManualReviewPage
             documents={reviewPendingDocs}
             onBack={handleBackToHome}
             onApprove={handleApproveReviewDoc}
@@ -240,71 +238,17 @@ export function App() {
 
         {/* VIEW 3: HOME PRINCIPAL (Pastas) */}
         {currentView === 'home' && (
-          <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-200">
-            {/* Page Title & Subtitle */}
-            <section className="space-y-1">
-              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#2d0a33] dark:text-[#fdfcfe]">
-                Documentos
-              </h1>
-              <p className="text-sm sm:text-base text-[#6f6379] dark:text-[#9f91a6]">
-                Documentos processados pela IA, organizados por tipo documental.
-              </p>
-            </section>
-
-            {/* Manual Review Attention Banner */}
-            {reviewCount > 0 && (
-              <section>
-                <ManualReviewBanner
-                  count={reviewCount}
-                  onReviewClick={handleOpenReview}
-                />
-              </section>
-            )}
-
-            {/* Global Metrics Summary Card */}
-            <section>
-              <MetricsCard
-                classifiedCount={classifiedCount}
-                accuracyPercentage={75}
-                reviewCount={reviewCount}
-              />
-            </section>
-
-            {/* Category Search & Filter Tabs */}
-            <section className="pt-2">
-              <FilterBar
-                searchCategory={categorySearch}
-                onSearchChange={setCategorySearch}
-                activeFilter={filterType}
-                onFilterChange={setFilterType}
-              />
-            </section>
-
-            {/* Document Folders Grid - Foco baseado na movimentação do mouse */}
-            <section>
-              {filteredCategories.length === 0 ? (
-                <div className="w-full py-16 text-center rounded-2xl border border-dashed border-[#dcd4e2] dark:border-[#33203e] bg-white/50 dark:bg-[#1a1120]/50">
-                  <p className="text-base font-semibold text-[#2d0a33] dark:text-white">
-                    Nenhuma categoria encontrada
-                  </p>
-                  <p className="text-xs text-[#8f8298] dark:text-[#7f7188] mt-1">
-                    Tente buscar por outro termo ou limpe os filtros.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5 sm:gap-6 auto-rows-fr">
-                  {filteredCategories.map((category) => (
-                    <FolderCard
-                      key={category.id}
-                      category={category}
-                      isSelected={false}
-                      onClick={handleOpenCategory}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
+          <HomePage
+            reviewCount={reviewCount}
+            onOpenReview={handleOpenReview}
+            classifiedCount={classifiedCount}
+            categorySearch={categorySearch}
+            onCategorySearchChange={setCategorySearch}
+            filterType={filterType}
+            onFilterChange={setFilterType}
+            filteredCategories={filteredCategories}
+            onOpenCategory={handleOpenCategory}
+          />
         )}
       </main>
 
