@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from app.routers.revisao import actions
 from app.routers.revisao.schemas import Revisao
 
-router = APIRouter()
+router = APIRouter(tags=["Revisão"])
 
 
 @router.get("/revisao")

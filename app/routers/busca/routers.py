@@ -3,7 +3,7 @@ from fastapi import APIRouter, Query
 from app.routers.busca import actions
 from app.routers.busca.validations import validar_consulta
 
-router = APIRouter()
+router = APIRouter(tags=["Busca"])
 
 
 @router.get("/busca")

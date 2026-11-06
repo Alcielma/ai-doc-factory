@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from app import config
 from app.routers import r
 
-router = APIRouter()
+router = APIRouter(tags=["Saúde"])
 
 
 @router.get("/health")

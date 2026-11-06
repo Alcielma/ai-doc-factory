@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from app.routers.cadastro_empresas import actions
 from app.routers.cadastro_empresas.schemas import NovaEmpresa
 
-router = APIRouter()
+router = APIRouter(tags=["Cadastro de empresas"])
 
 
 @router.post("/cadastro-empresas", status_code=201)

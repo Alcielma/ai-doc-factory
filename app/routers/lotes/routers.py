@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse
 from app.routers.lotes import actions
 from app.routers.lotes.validations import converter_para_pdf
 
-router = APIRouter()
+router = APIRouter(tags=["Lotes"])
 
 
 @router.post("/lotes")

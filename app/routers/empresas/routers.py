@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from app.routers.empresas import actions
 
-router = APIRouter()
+router = APIRouter(tags=["Conformidade"])
 
 
 @router.get("/empresas")
