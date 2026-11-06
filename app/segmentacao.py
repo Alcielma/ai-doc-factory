@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from app import config
 
 # "Página 1 de 3", tolerando caixa, espaços, "Pag."/"Pág", "1/3" e confusões comuns do OCR (l/I/|/O no lugar de 1/0).
-_PAGINACAO = re.compile(r"\bp[aá4]g(?:ina|\.)?\s*([0-9lI|O]{1,3})\s*(?:de|/)\s*([0-9lI|O]{1,3})\b", re.IGNORECASE)
+_PAGINACAO = re.compile(r"\bp[aá4]g(?:ina|\.)?\s*([0-9lLiI|oO]{1,3})\s*(?:de|/)\s*([0-9lLiI|oO]{1,3})(?!\w)", re.IGNORECASE)
 _TOKEN = re.compile(r"\w{2,}")
 
 
@@ -19,7 +19,7 @@ class Documento:
 
 
 def _num(s: str) -> int:
-    return int(s.translate(str.maketrans("lI|O", "1110")))
+    return int(s.translate(str.maketrans("lLiI|oO", "1111100")))
 
 
 def paginacao(texto: str) -> tuple[int, int] | None:
@@ -28,7 +28,10 @@ def paginacao(texto: str) -> tuple[int, int] | None:
     if not achados:
         return None
     k, n = achados[-1]
-    return _num(k), _num(n)
+    k, n = _num(k), _num(n)
+    if k < 1 or n < 1 or k > n:
+        return None  # paginação impossível: cai na cascata TF-IDF
+    return k, n
 
 
 def em_branco(texto: str) -> bool:

@@ -87,3 +87,17 @@ def test_reconciliar_detecta_buraco_e_sobreposicao():
         segmentacao.reconciliar([Documento(1, 2), Documento(2, 3)], 3)
     with pytest.raises(AssertionError):
         segmentacao.reconciliar([Documento(1, 2)], 3)
+
+
+@pytest.mark.parametrize("texto,esperado", [
+    ("Página i de 3", (1, 3)), ("Pagina L de 3", (1, 3)), ("Página 1 de o", None),
+    ("Página 2 de |", None), ("Página | de 2", (1, 2)), ("Página 1 de |", (1, 1)),
+    ("Página 0 de 3", None), ("Página 8 de 3", None), ("Página 2 de 3", (2, 3)),
+])
+def test_paginacao_ruido_e_valores_impossiveis(texto, esperado):
+    assert paginacao(texto) == esperado
+
+
+def test_segmentar_nao_lanca_com_pagina_i_de_2():
+    docs = segmentar([f"{HOLERITE} Página i de 2", f"{HOLERITE} Página 2 de 2", f"{ATESTADO} Página 8 de 3"])
+    assert docs[0].pagina_ini == 1 and docs[-1].pagina_fim == 3
