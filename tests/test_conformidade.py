@@ -25,8 +25,8 @@ def lote(tipos, campos_base, primeiro_id=1, lote_id=1, estado="classificado"):
 
 
 def avaliar(docs, campos, cnpj=CNPJ_A, ref=REF):
-    empresas, sem = agrupar_empresas(docs, campos)
-    return calcular_empresa(empresas[cnpj], campos, ref, sem)
+    empresas, _ = agrupar_empresas(docs, campos)
+    return calcular_empresa(empresas[cnpj], campos, ref)
 
 
 def fecha_em_100(r):
@@ -65,7 +65,7 @@ def test_dois_cnpjs_ficam_separados_e_documento_sem_empresa_e_listado():
     assert {c: len(v) for c, v in empresas.items()} == {CNPJ_A: 5, CNPJ_B: 5}
     assert {(s["id"], s["motivo"]) for s in sem if s["id"] in (20, 21)} == {
         (20, "CNPJ da prestadora inválido"), (21, "CNPJ da prestadora inválido")}
-    assert [s["id"] for s in sem if s["id"] == 30] == [30] and "não analisado" in sem[-1]["motivo"]
+    assert [s["id"] for s in sem if s["id"] == 30] == [30] and sem[-1]["motivo"] == "CNPJ da prestadora ausente"  # em_revisao sem CNPJ
 
 
 def test_empresa_completa_tem_100_nos_tres_niveis():
@@ -97,19 +97,41 @@ def test_obrigatorio_ausente_sem_documento_nao_identificado():
     assert (g["score"], g["classificacao"], g["provisorio"]) == (92, "Regular", False) and fecha_em_100(g)
 
 
-def test_obrigatorio_faltante_e_pendente_com_documento_nao_analisado_ou_sem_empresa():
-    docs, campos = lote([t for t in OBRIG if t != "folha_ponto"], pessoa())
-    nao, _ = lote(["desconhecido"], {}, primeiro_id=50, estado="em_revisao")
-    g = avaliar(docs + nao, campos)["geral"]
+def test_desconhecido_da_propria_empresa_torna_os_faltantes_pendentes():
+    docs, campos = lote([t for t in OBRIG if t not in ("folha_ponto", "aso")], pessoa())
+    nao, cn = lote(["desconhecido"], pessoa(), primeiro_id=50, estado="em_revisao")
+    g = avaliar(docs + nao, {**campos, **cn})["geral"]
     assert g["descontos"] == [] and g["score"] == 100 and g["provisorio"] is True
-    assert any(p["criterio"] == "completude" and p["tipo"] == "folha_ponto" for p in g["pendencias"])
-    # folha_ponto classificada, mas sem CNPJ válido: também pode ser a que falta
-    sem, csem = lote(["folha_ponto"], pessoa(cnpj=""), primeiro_id=60)
-    g = avaliar(docs + sem, {**campos, **csem})["geral"]
-    assert g["descontos"] == [] and g["provisorio"] is True
-    # em outro lote o documento sem empresa não interfere
-    outro, coutro = lote(["folha_ponto"], pessoa(cnpj=""), primeiro_id=70, lote_id=2)
-    assert [d["tipo"] for d in avaliar(docs + outro, {**campos, **coutro})["geral"]["descontos"]] == ["folha_ponto"]
+    assert {p["tipo"] for p in g["pendencias"] if p["criterio"] == "completude"} == {"folha_ponto", "aso"}
+
+
+def test_em_revisao_com_tipo_sugerido_cobre_so_esse_tipo():
+    docs, campos = lote([t for t in OBRIG if t not in ("folha_ponto", "aso")], pessoa())
+    nao, cn = lote(["folha_ponto"], pessoa(), primeiro_id=50, estado="em_revisao")
+    g = avaliar(docs + nao, {**campos, **cn})["geral"]
+    assert [d["tipo"] for d in g["descontos"]] == ["aso"]  # aso é ausente; folha_ponto é pendente
+    assert [p["tipo"] for p in g["pendencias"] if p["criterio"] == "completude"] == ["folha_ponto"]
+    assert g["provisorio"] is True and g["score"] == 90
+
+
+def test_pendente_em_uma_empresa_nao_blinda_a_outra_nem_documento_sem_empresa_afeta():
+    da, ca = lote([t for t in OBRIG if t != "folha_ponto"], pessoa())
+    db, cb = lote([t for t in OBRIG if t != "folha_ponto"], pessoa(cnpj=CNPJ_B, cpf=CPF2), primeiro_id=10)
+    pend, cp = lote(["desconhecido"], pessoa(), primeiro_id=50, estado="em_revisao")  # pendente em A
+    sem, cs = lote(["folha_ponto"], pessoa(cnpj=""), primeiro_id=60)  # sem empresa, mesmo lote
+    docs, campos = da + db + pend + sem, {**ca, **cb, **cp, **cs}
+    a, b = avaliar(docs, campos), avaliar(docs, campos, cnpj=CNPJ_B)
+    assert a["geral"]["descontos"] == [] and a["geral"]["provisorio"] is True
+    assert [d["tipo"] for d in b["geral"]["descontos"]] == ["folha_ponto"] and b["geral"]["provisorio"] is False
+    assert b["geral"]["score"] == 92
+    assert {s["id"] for s in agrupar_empresas(docs, campos)[1]} == {60}
+
+
+def test_empresa_so_com_recibo_ferias_tem_score_baixo():
+    docs, campos = lote(["recibo_ferias"], pessoa())
+    g = avaliar(docs, campos)["geral"]
+    assert g["criterios"]["completude"]["nota"] == 0.0 and len(g["descontos"]) == 5
+    assert g["score"] == 0 and g["classificacao"] == "Crítico" and fecha_em_100(g)
 
 
 def test_aso_vencido_nos_tres_niveis():
@@ -200,10 +222,13 @@ def test_sem_extracao_criterios_pendentes_e_peso_redistribuido():
 
 def test_documento_nao_analisado_nao_zera_a_nota():
     docs, campos = lote(OBRIG, pessoa())
-    for estado, tipo in [("segmentado", None), ("em_revisao", "holerite"), ("erro", None), ("classificado", "desconhecido")]:
-        extra, _ = lote([tipo], {}, primeiro_id=99, estado=estado)
-        g = avaliar(docs + extra, campos)["geral"]
+    for tipo in ("holerite", "desconhecido"):
+        extra, cx = lote([tipo], pessoa(), primeiro_id=99, estado="em_revisao")
+        g = avaliar(docs + extra, {**campos, **cx})["geral"]
         assert g["score"] == 100 and g["provisorio"] is True and any(p["documento"] == 99 for p in g["pendencias"])
+    for estado in ("segmentado", "erro"):  # nunca têm empresa
+        extra, cx = lote(["holerite"], pessoa(), primeiro_id=98, estado=estado)
+        assert 98 in {s["id"] for s in agrupar_empresas(docs + extra, {**campos, **cx})[1]}
 
 
 def test_soma_dos_descontos_fecha_em_100_com_varios_descontos():

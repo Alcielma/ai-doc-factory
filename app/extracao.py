@@ -60,7 +60,7 @@ def extrair_campos(payload: dict) -> None:
     doc_id = payload["documento_id"]
     with psycopg.connect(config.DATABASE_URL) as conn:
         doc = conn.execute("SELECT estado, lote_id, pagina_ini, tipo FROM documento WHERE id = %s", (doc_id,)).fetchone()
-        if doc is None or doc[0] not in ("classificado", "revisado"):
+        if doc is None or doc[0] not in ("classificado", "revisado", "em_revisao"):
             return
         textos = [t for (t,) in conn.execute("SELECT texto FROM pagina WHERE documento_id = %s ORDER BY numero", (doc_id,))]
     prompt = prompts.prompt_extracao(doc[3], montar_texto(textos, TEXTO_MAX))

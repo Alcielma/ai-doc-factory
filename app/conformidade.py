@@ -157,11 +157,13 @@ def identificar_empresa(campos_doc: dict) -> tuple[str | None, str | None]:
 
 
 def agrupar_empresas(documentos: list[dict], campos: dict) -> tuple[dict, list[dict]]:
-    """documentos: [{id, lote_id, tipo, estado}]. Devolve ({cnpj: [docs analisados]}, [docs sem empresa])."""
+    """documentos: [{id, lote_id, tipo, estado}]. Devolve ({cnpj: [docs]}, [docs sem empresa]).
+    Documentos analisados e em_revisao (extraídos, mas sem tipo confirmado) entram na empresa pelo CNPJ;
+    segmentado e erro nunca têm empresa. Documento sem empresa não afeta a nota de nenhuma empresa."""
     empresas: dict[str, list[dict]] = {}
     sem: list[dict] = []
     for d in documentos:
-        if not analisado(d):
+        if not analisado(d) and d.get("estado") != "em_revisao":
             sem.append({**d, "motivo": f"documento não analisado (estado '{d.get('estado')}', tipo '{d.get('tipo')}')"})
             continue
         cnpj, motivo = identificar_empresa(campos.get(d["id"], {}))
@@ -316,18 +318,19 @@ def _avaliar(escopo, campos, ref, grupos, faltas, completude=(), validade=True, 
     return res
 
 
-def calcular_empresa(docs: list[dict], campos: dict, ref: date, sem_empresa: list[dict] = ()) -> dict:
-    """docs: documentos analisados da empresa. sem_empresa: documentos sem empresa dos mesmos lotes; eles não
-    entram na nota, mas tornam pendente (não ausente) um obrigatório que poderiam ser."""
+def calcular_empresa(todos: list[dict], campos: dict, ref: date) -> dict:
+    """todos: documentos da empresa (analisados e em_revisao). Só os da PRÓPRIA empresa tornam pendente um
+    obrigatório faltante: em_revisao com tipo sugerido conhecido cobre só esse tipo; com tipo desconhecido,
+    qualquer faltante. Fora disso o faltante é ausente. Documento sem empresa não entra aqui."""
+    docs = [d for d in todos if analisado(d)]
+    pendentes = [{**d, "motivo": f"documento não analisado (estado '{d.get('estado')}', tipo '{d.get('tipo')}')"}
+                 for d in todos if not analisado(d)]
     grupos, faltas = _grupos_consistencia(docs, campos)
-    lotes = {d.get("lote_id") for d in docs}
-    vizinhos = [s for s in sem_empresa if s.get("lote_id") in lotes]
 
     def escondido(t):
-        return any(not analisado(s) or s["tipo"] == t for s in vizinhos)
+        return any(p["tipo"] not in config.TIPOS or p["tipo"] == t for p in pendentes)
 
-    geral = _avaliar(docs, campos, ref, grupos, faltas, OBRIGATORIOS, True, escondido,
-                     [s for s in vizinhos if not analisado(s)])
+    geral = _avaliar(docs, campos, ref, grupos, faltas, OBRIGATORIOS, True, escondido, pendentes)
     por_tipo = {}
     for t in sorted({d["tipo"] for d in docs} | set(OBRIGATORIOS)):
         por_tipo[t] = _avaliar([d for d in docs if d["tipo"] == t], campos, ref, grupos, faltas,
@@ -335,5 +338,5 @@ def calcular_empresa(docs: list[dict], campos: dict, ref: date, sem_empresa: lis
     por_doc = {d["id"]: _avaliar([d], campos, ref, grupos, faltas, (), d["tipo"] in VALIDADE) for d in docs}
     razoes = Counter(campos.get(d["id"], {}).get("razao_social_prestadora") for d in docs)
     razao = next((r for r, _ in razoes.most_common() if r), None)
-    return {"razao_social": razao, "data_referencia": ref.isoformat(), "geral": geral, "por_tipo": por_tipo,
+    return {"razao_social": razao, "documentos_por_tipo": dict(Counter(str(d["tipo"]) for d in todos)), "data_referencia": ref.isoformat(), "geral": geral, "por_tipo": por_tipo,
             "por_documento": por_doc}

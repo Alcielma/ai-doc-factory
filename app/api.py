@@ -200,7 +200,7 @@ def _carregar_conformidade(conn):
 
 def _resumo(cnpj: str, res: dict) -> dict:
     g = res["geral"]
-    return {"cnpj": cnpj, "razao_social": res["razao_social"], "score": g["score"],
+    return {"cnpj": cnpj, "razao_social": res["razao_social"], "documentos_por_tipo": res["documentos_por_tipo"], "score": g["score"],
             "classificacao": g["classificacao"], "provisorio": g["provisorio"]}
 
 
@@ -209,7 +209,8 @@ def _empresas():
         docs, campos = _carregar_conformidade(conn)
     empresas, sem = conformidade.agrupar_empresas(docs, campos)
     hoje = date.today()
-    return {c: conformidade.calcular_empresa(ds, campos, hoje, sem) for c, ds in empresas.items()}, sem, docs
+    resultados = {c: conformidade.calcular_empresa(ds, campos, hoje) for c, ds in empresas.items()}
+    return resultados, sem, empresas
 
 
 @app.get("/empresas")
@@ -235,11 +236,10 @@ def conformidade_lote(lote_id: int):
     with psycopg.connect(config.DATABASE_URL) as conn:
         if conn.execute("SELECT 1 FROM lote WHERE id = %s", (lote_id,)).fetchone() is None:
             raise HTTPException(404, "lote não encontrado")
-    resultados, sem, docs = _empresas()
-    ids_lote = {d["id"] for d in docs if d["lote_id"] == lote_id}
+    resultados, sem, grupos = _empresas()
     empresas = []
     for cnpj, res in sorted(resultados.items()):
-        nesse_lote = sorted(i for i in res["por_documento"] if i in ids_lote)
+        nesse_lote = sorted(d["id"] for d in grupos[cnpj] if d["lote_id"] == lote_id)
         if nesse_lote:
             empresas.append({**_resumo(cnpj, res), "documentos": nesse_lote})
     return {"lote_id": lote_id, "empresas": empresas,

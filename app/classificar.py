@@ -81,6 +81,6 @@ def classificar_documento(payload: dict) -> None:
         if row is None:
             return
         _fan_in(conn, row[0])
-    if decisao.estado == "classificado":  # em_revisao só extrai depois da correção humana
-        from app.extracao import enfileirar_extracao  # import tardio: extracao importa este módulo
-        enfileirar_extracao(doc_id)
+    # classificado e em_revisao: CNPJ e demais campos não dependem do tipo confirmado
+    from app.extracao import enfileirar_extracao  # import tardio: extracao importa este módulo
+    enfileirar_extracao(doc_id)

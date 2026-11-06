@@ -169,8 +169,15 @@ def test_job_de_extracao_nao_participa_do_fan_in_e_nao_vai_para_dlq(novo_lote, m
         assert conn.execute("SELECT docs_pendentes, estado FROM lote WHERE id = %s", (lote,)).fetchone() == (0, "concluido")
 
 
-def test_documento_nao_analisado_nao_chama_o_gemini(novo_lote, monkeypatch):
-    _, (doc,) = novo_lote([("holerite", "em_revisao", {})])
+def test_documento_em_revisao_e_extraido(novo_lote, monkeypatch):
+    _, (doc,) = novo_lote([("desconhecido", "em_revisao", {})])
+    _gemini_ok(monkeypatch, RESPOSTA)
+    extracao.extrair_campos({"documento_id": doc})
+    assert _campos_do_doc(doc)["cnpj_prestadora"] == "11.222.333/0001-81"
+
+
+def test_documento_em_erro_nao_chama_o_gemini(novo_lote, monkeypatch):
+    _, (doc,) = novo_lote([("holerite", "erro", {})])
     _gemini_ok(monkeypatch, RESPOSTA, chamadas := [])
     extracao.extrair_campos({"documento_id": doc})
     assert chamadas == []
@@ -183,7 +190,7 @@ def test_falha_ao_enfileirar_nao_derruba(monkeypatch):
     extracao.enfileirar_extracao.__wrapped__(1, Quebrado())  # não levanta
 
 
-def test_classificacao_enfileira_extracao_so_quando_classificado(novo_lote, extracoes):
+def test_classificacao_enfileira_extracao_para_classificado_e_em_revisao(novo_lote, extracoes):
     with psycopg.connect(config.DATABASE_URL) as conn:
         lote = conn.execute("INSERT INTO lote (sha256, nome_arquivo, estado, docs_pendentes) VALUES (%s, 't.pdf', "
                             "'classificando', 2) RETURNING id", (uuid.uuid4().hex + uuid.uuid4().hex,)).fetchone()[0]
@@ -196,7 +203,7 @@ def test_classificacao_enfileira_extracao_so_quando_classificado(novo_lote, extr
     try:
         for i in ids:
             classificar.classificar_documento({"documento_id": i})
-        assert extracoes == [ids[0]]  # o segundo foi para revisão
+        assert extracoes == ids  # classificado e em_revisao
     finally:
         with psycopg.connect(config.DATABASE_URL) as conn:
             conn.execute("DELETE FROM lote WHERE id = %s", (lote,))
