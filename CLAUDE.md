@@ -14,7 +14,13 @@ Projeto de hackathon (7 horas). Recebe PDFs de lote com muitas páginas escanead
 - **Rode de verdade:** nada está pronto sem ter sido executado (`docker compose up`, processar um lote, rodar a avaliação). Mostre a saída real.
 - **Pergunte em vez de assumir:** se algo for ambíguo ou depender de informação que você não tem, pare e reporte. Subagents devolvem a dúvida à sessão principal.
 - **Não invente métricas:** todo número no README vem de um script que foi rodado.
-- **Nunca commite segredos:** chaves ficam em `.env`, que está no `.gitignore`. Mantenha `.env.example` atualizado, sem valores.
+- **Nunca suba chaves de API nem outros segredos:** o repositório é público. `OPENROUTER_API_KEY`, `GEMINI_API_KEY` e `POSTGRES_PASSWORD` ficam só no `.env`, que está no `.gitignore`.
+  - Nunca force a inclusão do `.env` (`git add -f`) nem coloque chaves no código, em testes, em exemplos, no `docker-compose.yml`, em commits ou em PRs.
+  - Nunca imprima chaves em logs, saídas de comando ou relatórios. Para conferir uma variável, mostre só o nome.
+  - O cache de LLM não pode guardar cabeçalhos de autenticação.
+  - Mantenha `.env.example` atualizado, sem valores.
+  - Antes de cada commit, revise o que está sendo adicionado com `git diff --cached`.
+  - Se uma chave vazar, pare e avise a pessoa responsável, porque ela precisa revogar a chave. Apagar o commit não basta.
 
 ### Se estiver atrasado, corte nesta ordem
 
