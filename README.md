@@ -230,6 +230,36 @@ Também podem ser ajustadas por ambiente (valores em `app/config.py`, não lista
 | UI Streamlit | Não implementado | Fora do escopo por enquanto |
 | `frontend/` | Esqueleto | Template inicial do Vite, separado do backend |
 
+## Anonimização
+
+`app/anonimizacao.py` é determinístico (regex e heurísticas de linha; sem LLM, sem modelo).
+
+**O que é mascarado e onde**
+
+- Texto enviado a LLM (`anonimizar_texto`: `[CPF]`, `[RG]`, `[PIS]`, `[NASCIMENTO]`, `[NOME]`): a classificação do Jev, as duas fatias da pergunta de fronteira, o texto de OCR enviado ao Gemini na análise de ponto e a `analise_gemini` que vai ao Jev. As regras locais da segmentação (paginação, CNPJ, TF-IDF) usam o texto original.
+- Respostas da API (`mascarar_documentos`; CPF no formato `***.456.789-**`, RG e PIS como `***`): `pagina.texto` e `campos` de `GET /documentos/{id}`, `GET /documentos` e `GET /revisao` (e das respostas de `PUT /documentos/{id}/campos` e `PATCH /documentos/{id}/tipo`), `trecho` de `GET /busca`, `GET /documentos/{id}/analise-ponto` e os três endpoints de conformidade (`GET /empresas`, `GET /empresas/{cnpj}/conformidade`, `GET /lotes/{id}/conformidade`).
+- A busca continua procurando no texto original do banco: achar por nome ou pelo CPF pontuado funciona, e o trecho devolvido sai mascarado.
+- `PUT /documentos/{id}/campos` rejeita com 422 um `cpf`, `rg` ou `pis` que chegue mascarado (contém `*`), para a máscara nunca sobrescrever o valor real. Para manter o valor, omita o campo.
+- Não são mascarados: CNPJ (é da empresa e a chave do Goal 7), datas e horários comuns (as marcações da folha de ponto ficam intactas) e termos de tipo documental e de RH (cargos, setores, títulos), que o classificador precisa ler.
+
+**Decisão:** nomes continuam visíveis na API (`pessoa`, `campos.nome`), porque a tela de revisão precisa deles e mostra a imagem da página de qualquer forma.
+
+**Resultado medido** (`docker compose exec api python scripts/avaliar_anonimizacao.py documentos.jsonl --db`, com os lotes já processados; lotes `L0001` a `L0005` do conjunto de ajuste do gerador sintético, texto do OCR do banco; a heurística foi ajustada nesse mesmo conjunto, então **não é métrica final**):
+
+- Nome completo do funcionário que ainda aparece no texto anonimizado: 0 de 26 documentos (em 3 dos 29 documentos com nome no gabarito o OCR não leu o nome, e eles ficam fora da conta).
+- Algum nome ou sobrenome (4+ letras) que ainda aparece: 2 de 26. Em um deles o OCR trocou o primeiro nome por "pára" e sobrou "Marques"; no outro "Rezende" aparece no endereço da empresa, que não é mascarado de propósito.
+- CPFs válidos no texto: 26 antes, 0 depois.
+- Termos de tipo documental apagados por engano (lista `TERMOS_DOCUMENTAIS` do módulo): 0.
+- A medição só olha os nomes dos funcionários do gabarito. Nomes de médicos e de outros funcionários da folha de pagamento não têm gabarito: o módulo os mascara, mas não há número para isso. Ainda há falso positivo em texto com ruído de OCR (por exemplo, `[NOME]` no lugar de lixo em páginas rotacionadas).
+
+**Limitações**
+
+- As imagens das páginas enviadas ao Gemini (segunda opinião, análise de ponto e extração) não são mascaradas, e a extração de campos (`app/extracao.py`) envia o texto sem anonimizar, porque precisa ler nome e CPF.
+- O banco, o volume de arquivos (`/data`, com as imagens das páginas) e o cache de LLM (`/cache`) guardam dados reais. Não há hash nem cifragem. O cache guarda as respostas dos LLMs, e a da extração contém nome e CPF.
+- Nomes visíveis na API (decisão acima).
+- A heurística de nome (2 a 6 palavras capitalizadas numa linha, mais rótulos) não é garantia: erra em nomes de uma palavra só, em nomes quebrados de forma incomum pelo OCR e em lixo de OCR, e pode mascarar expressões capitalizadas que não estejam na lista de exclusão. Só foi ajustada em documentos sintéticos.
+- Isto não é conformidade LGPD por si só.
+
 ## Limitações
 
 - Os dados sintéticos são otimistas. A validação em documentos reais (scans ruins, rotações, manuscritos) ainda é necessária.
@@ -237,7 +267,7 @@ Também podem ser ajustadas por ambiente (valores em `app/config.py`, não lista
 - Autenticação mínima: um único usuário administrador, sem tabela de usuários nem papéis; sem limite de tentativas de login; sem revogação de token (ele vale até expirar; para invalidar todos, troque `AUTH_SEGREDO`); e sem HTTPS, que em produção precisa ficar a cargo de um proxy reverso. O token fica em `sessionStorage` no frontend.
 - Sem migrações: `sql/schema.sql` só vale em banco novo (ver `docker compose down -v`).
 - Sem CI.
-- O Jev e o Gemini recebem texto e imagem de páginas dos documentos. Use `CLASSIFICADOR=regras` se o conteúdo não puder sair da máquina.
+- O Jev e o Gemini recebem texto (anonimizado, ver "Anonimização") e imagem de páginas dos documentos. Use `CLASSIFICADOR=regras` se o conteúdo não puder sair da máquina.
 - A confiança do classificador por regras é uma heurística sem calibração, usada só para roteamento.
 - O sistema apoia a auditoria e não substitui parecer jurídico.
 
