@@ -87,8 +87,8 @@ CRITERIOS_FRONTEIRA = {
 
 # --- Análise de folha de ponto (Goal 6) ---
 # Mudou qualquer texto abaixo, suba a versão: ela é gravada em analise_ponto.
-VERSAO_PROMPT_PONTO_GEMINI = "gemini-ponto-v1"
-VERSAO_PROMPT_PONTO_JEV = "jev-ponto-v2"
+VERSAO_PROMPT_PONTO_GEMINI = "gemini-ponto-v2"
+VERSAO_PROMPT_PONTO_JEV = "jev-ponto-v3"
 
 
 def prompt_gemini_ponto(texto: str, perfil_json: str, tipos: tuple) -> str:
@@ -103,8 +103,13 @@ def prompt_gemini_ponto(texto: str, perfil_json: str, tipos: tuple) -> str:
         "Dia sem marcação (folga, falta, feriado, atestado): inclua o dia com `pares` vazio.\n"
         "- intervalo_pre_assinalado: true se o intervalo de descanso vem impresso ou pré-assinalado na folha e o "
         "dia tem só um par entrada/saída; false se o intervalo é registrado pelo funcionário.\n"
-        f"- divergencias: problemas que você encontra comparando as marcações com o perfil abaixo; `tipo` deve ser "
+        f"- divergencias: problemas que você encontra (não inclua total_declarado_divergente: o sistema calcula) comparando as marcações com o perfil abaixo; `tipo` deve ser "
         f"exatamente um de {list(tipos)}; `minutos` inteiro; `base_legal` e `evidencia` (trecho curto lido na folha).\n"
+        "- horario_contratual: o horário contratual impresso na folha, como pares [entrada, saida] \"HH:MM\" na "
+        "mesma ordem das marcações (ex.: [[\"09:00\",\"13:00\"],[\"14:00\",\"18:00\"]]); lista vazia se a folha não informar.\n"
+        "- totais_declarados: o que a própria folha declara no rodapé, em minutos: `total_horas_min` (total de horas) "
+        "e `horas_extras_min` (horas extras); null no campo que a folha não informar. Copie o valor declarado, "
+        "NÃO calcule.\n"
         "- analise: no máximo 3 frases sobre a folha.\n"
         "Não invente horários. Não inclua nome, CPF nem outros dados pessoais na resposta.\n\n"
         f"Perfil de jornada (minutos; valor e base legal):\n{perfil_json}\n\n"
@@ -158,13 +163,14 @@ PERGUNTAS_PONTO = {
         "type": "score",
         "instructions": (
             "Considerando só `contagens.registro` (contagens já calculadas), qual situação de qualidade do "
-            "registro de ponto descreve a folha? Ponto britânico é horário quase idêntico todos os dias; é um sinal "
+            "registro de ponto descreve a folha? `totais_declarados_divergentes` conta os totais da folha (horas e "
+            "horas extras) que não batem com o recalculado; 0 também vale quando a folha não declara totais. Ponto britânico é horário quase idêntico todos os dias; é um sinal "
             "de risco, não prova." + AVISO_ANALISE),
         "criteria": [
-            "Todos os dias com marcações legíveis e completas, e sem sinal de ponto britânico",
+            "Todos os dias com marcações legíveis e completas, sem sinal de ponto britânico e sem total declarado divergente",
             "Poucos dias com marcação incompleta ou ilegível, e sem sinal de ponto britânico",
-            "Sinal de ponto britânico, ou marcação incompleta ou ilegível em vários dias",
-            "Sinal de ponto britânico e marcação incompleta ou ilegível em grande parte dos dias",
+            "Sinal de ponto britânico, ou marcação incompleta ou ilegível em vários dias, ou total declarado na folha diferente do recalculado por pequena diferença",
+            "Sinal de ponto britânico e marcação incompleta ou ilegível em grande parte dos dias, ou total de horas extras declarado na folha muito diferente do recalculado",
         ],
     },
 }

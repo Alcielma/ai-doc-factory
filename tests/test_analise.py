@@ -21,9 +21,9 @@ GEM_OK_DIVS = [{"tipo": "horas_extras_acima_limite", "data": "2025-11-03", "minu
                {"tipo": "intervalo_intrajornada_insuficiente", "data": "2025-11-03", "minutos": 30}]
 
 
-def _gemini(marcacoes, divs=(), pre=False, versao="gemini-servido-9"):
+def _gemini(marcacoes, divs=(), pre=False, versao="gemini-servido-9", **extra):
     texto = json.dumps({"marcacoes": marcacoes, "intervalo_pre_assinalado": pre, "divergencias": list(divs),
-                        "analise": "Folha com horas extras."})
+                        "analise": "Folha com horas extras.", **extra})
     return {"modelVersion": versao, "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 5},
             "candidates": [{"content": {"parts": [{"text": texto}]}}]}
 
@@ -301,3 +301,28 @@ def test_folha_irregular_pontua_acima_da_regular(rede, monkeypatch, tmp_path):
         with psycopg.connect(config.DATABASE_URL, autocommit=True) as conn:
             conn.execute("DELETE FROM lote WHERE id = %s", (lote,))
     assert resultados[0] > resultados[1]
+
+
+def test_horario_contratual_e_totais_declarados_extraidos_viram_calculo_e_divergencia(doc, rede):
+    rede["gemini"].append(_gemini(
+        IRREGULAR, GEM_OK_DIVS, horario_contratual=[["08:00", "12:00"], ["13:00", "17:00"]],
+        totais_declarados={"total_horas_min": 1200, "horas_extras_min": 180}))  # bruto recalculado: 240
+    rede["jev"].append(lambda corpo: _jev(corpo, {"registro": 2}))
+    analise.analisar_documento({"documento_id": doc})
+    corpo = client.get(f"/documentos/{doc}/analise-ponto").json()
+    totais_div = [d for d in corpo["divergencias"] if d["tipo"] == "total_declarado_divergente"]
+    assert [(d["campo"], d["minutos"]) for d in totais_div] == [("horas_extras", 60)]  # total de horas bate (1200)
+    assert corpo["totais"]["declarados"]["extras_bruto_min"] == 240
+    assert corpo["totais"]["tolerancia_por_marcacao"]["aplicada"] is True
+    assert corpo["contagens"]["registro"]["totais_declarados_divergentes"] == 1
+    assert rede["corpos"]["jev"][0]["state"]["contagens"]["registro"]["maior_diferenca_do_total_declarado_min"] == 60
+    props = rede["corpos"]["gemini"][0]["generationConfig"]["responseSchema"]["properties"]
+    assert {"horario_contratual", "totais_declarados"} <= set(props)
+
+
+def test_extracao_sem_horario_nem_totais_segue_so_com_o_teto_diario(doc, rede):
+    rede["gemini"].append(_gemini(REGULAR, horario_contratual="lixo", totais_declarados={"horas_extras_min": None}))
+    rede["jev"].append(lambda corpo: _jev(corpo, {}))
+    analise.analisar_documento({"documento_id": doc})
+    t = client.get(f"/documentos/{doc}/analise-ponto").json()["totais"]
+    assert t["tolerancia_por_marcacao"]["aplicada"] is False and t["declarados"]["comparado"] is False

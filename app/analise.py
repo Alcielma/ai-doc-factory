@@ -34,8 +34,14 @@ SCHEMA_GEMINI = {
             "data": _STR, "minutos": {"type": "NUMBER"}, "base_legal": _STR, "evidencia": _STR,
         }, "required": ["tipo", "data", "minutos"]}},
         "analise": _STR,
+        "horario_contratual": {"type": "ARRAY", "items": {"type": "ARRAY", "items": _STR}},
+        "totais_declarados": {"type": "OBJECT", "properties": {
+            "total_horas_min": {"type": "NUMBER", "nullable": True},
+            "horas_extras_min": {"type": "NUMBER", "nullable": True},
+        }},
     },
-    "required": ["marcacoes", "intervalo_pre_assinalado", "divergencias", "analise"],
+    "required": ["marcacoes", "intervalo_pre_assinalado", "divergencias", "analise", "horario_contratual",
+                 "totais_declarados"],
 }
 
 
@@ -56,8 +62,15 @@ def _validar_extracao(dado) -> dict:
     divs = dado.get("divergencias") or []
     if not isinstance(divs, list) or not all(isinstance(d, dict) for d in divs):
         raise llm.LLMErro("Gemini: 'divergencias' fora do formato")
+    contrato = dado.get("horario_contratual")
+    if not (isinstance(contrato, list) and all(isinstance(p, list) and len(p) == 2 for p in contrato)):
+        contrato = []  # ausente ou fora do formato: só vale o teto diário (registrado em totais)
+    decl = dado.get("totais_declarados") if isinstance(dado.get("totais_declarados"), dict) else {}
+    declarados = {k: decl.get(k) if isinstance(decl.get(k), (int, float)) and not isinstance(decl.get(k), bool) else None
+                  for k in ("total_horas_min", "horas_extras_min")}
     return {"marcacoes": dado["marcacoes"], "intervalo_pre_assinalado": dado.get("intervalo_pre_assinalado") is True,
-            "divergencias": divs, "analise": str(dado.get("analise") or "")[:2000]}
+            "divergencias": divs, "analise": str(dado.get("analise") or "")[:2000],
+            "horario_contratual": contrato, "totais_declarados": declarados}
 
 
 def extrair_com_gemini(texto: str, imagens: list[bytes], perfil: dict) -> tuple[dict, str, dict]:
@@ -86,7 +99,9 @@ def julgar_com_jev(contagens: dict, analise: str) -> tuple[dict, str, dict]:
 def analisar(texto: str, imagens: list[bytes], perfil: dict) -> dict:
     """Pipeline completo (Gemini -> código -> Jev -> score). Levanta LLMErro em resposta inválida."""
     dado, modelo_gemini, uso_gemini = extrair_com_gemini(texto, imagens, perfil)
-    apuracao = ponto.apurar_folha(dado["marcacoes"], perfil, intervalo_pre_assinalado=dado["intervalo_pre_assinalado"])
+    apuracao = ponto.apurar_folha(dado["marcacoes"], perfil, intervalo_pre_assinalado=dado["intervalo_pre_assinalado"],
+                                  horario_contratual=dado["horario_contratual"],
+                                  totais_declarados=dado["totais_declarados"])
     britanico = ponto.detectar_ponto_britanico(dado["marcacoes"])
     comparacao = ponto.comparar_com_gemini(apuracao, dado["divergencias"])  # vale o código
     contagens = ponto.resumir_contagens(apuracao, britanico)
