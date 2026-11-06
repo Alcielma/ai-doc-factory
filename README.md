@@ -71,6 +71,8 @@ Edite o `.env`:
 - `API_PORT` define a porta da API no host (padrão 8000).
 - Para rodar sem rede e sem chaves, defina `CLASSIFICADOR=regras`. Com `CLASSIFICADOR=jev` (padrão do `.env.example`), preencha `OPENROUTER_API_KEY`, `JEV_MODEL` e `GEMINI_API_KEY`.
 
+- `AUTH_USUARIO`, `AUTH_SENHA` e `AUTH_SEGREDO` configuram o login do administrador (ver "Autenticação"). **Sem elas o sistema recusa o login (503) e toda rota protegida nega acesso.** Gere o segredo com `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
+
 O `.env` está no `.gitignore`. Nunca o versione.
 
 ### 2. Subir os serviços
@@ -140,9 +142,28 @@ O `-v` apaga os volumes: **todos os dados locais** (lotes, documentos, arquivos 
 
 ### Frontend
 
-A pasta `frontend/` é um projeto separado do backend (Vite + React + TypeScript + Tailwind v4). Hoje contém apenas o esqueleto inicial gerado pelo template do Vite, sem chamadas à API. Não faz parte do `docker-compose.yml` e não foi testada para este README.
+A pasta `frontend/` é um projeto separado do backend (Vite + React + TypeScript + Tailwind v4). Tem tela de login e chama a API com o token (ver `frontend/.env.example`; `VITE_API_PREFIX` fica vazio, a API não tem prefixo). Não faz parte do `docker-compose.yml` e não foi testada para este README.
+
+## Autenticação
+
+Há um único administrador, definido no ambiente (`AUTH_USUARIO`, `AUTH_SENHA`, `AUTH_SEGREDO`; `AUTH_EXPIRA_MIN` é a validade do token em minutos, padrão 480). Não há senha nem segredo padrão: sem as três variáveis, `POST /auth/login` responde 503 e as demais rotas protegidas também negam acesso. Ficam abertos só `GET /health`, `POST /auth/login`, `/docs` e `/openapi.json`.
+
+Para obter o token (substitua pelos seus valores):
+
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"usuario":"SEU_USUARIO","senha":"SUA_SENHA"}' \
+  localhost:8000/auth/login
+# {"access_token":"...","token_type":"bearer","expira_em":"..."}
+
+curl -H "Authorization: Bearer $TOKEN" localhost:8000/auth/me
+```
+
+O token é um JWT HS256 (claims `sub`, `iat`, `exp`). No `/docs`, use o botão Authorize. Token em query string não é aceito, nem para a imagem da página: o cliente deve enviar o cabeçalho `Authorization`.
 
 ## Endpoints
+
+**Todas as rotas abaixo, exceto `GET /health`, exigem `Authorization: Bearer <token>`.** Os exemplos de `curl` da tabela omitem o cabeçalho por brevidade: acrescente `-H "Authorization: Bearer $TOKEN"`.
 
 | Método e rota | Descrição | Exemplo |
 |---|---|---|
@@ -188,6 +209,10 @@ Definidas no `.env` (modelo em `.env.example`), repassadas aos containers pelo `
 | `JEV_MODEL` | vazio | Modelo do Jev. Testado com `typesafe/jev-1.13` |
 | `GEMINI_API_KEY` | vazio | Chave do Google AI Studio. Só no `.env` |
 | `GEMINI_MODEL` | `gemini-3.5-flash` | Modelo da segunda opinião |
+| `AUTH_USUARIO` | vazio | Usuário do administrador. Sem valor, o login responde 503 |
+| `AUTH_SENHA` | vazio | Senha do administrador. Só no `.env` |
+| `AUTH_SEGREDO` | vazio | Segredo que assina o JWT. Só no `.env` |
+| `AUTH_EXPIRA_MIN` | `480` | Validade do token, em minutos |
 
 Também podem ser ajustadas por ambiente (valores em `app/config.py`, não listadas no `.env.example` nem repassadas pelo `docker-compose.yml` atual, então exigem editá-lo): `SEG_SIM_BAIXO`, `SEG_SIM_ALTO`, `SEG_LLM_CONTINUA`, `SEG_LLM_ABRE`, `LLM_TIMEOUT`, `LLM_TENTATIVAS`, `LLM_ESPERA`. As respostas dos LLMs são cacheadas em disco (volume `cache_llm`).
 
@@ -209,7 +234,7 @@ Também podem ser ajustadas por ambiente (valores em `app/config.py`, não lista
 
 - Os dados sintéticos são otimistas. A validação em documentos reais (scans ruins, rotações, manuscritos) ainda é necessária.
 - Um worker por fila: não há escala horizontal testada.
-- Sem autenticação: qualquer cliente que alcance a API pode enviar, ler e revisar lotes. Não exponha a API fora de um ambiente local.
+- Autenticação mínima: um único usuário administrador, sem tabela de usuários nem papéis; sem limite de tentativas de login; sem revogação de token (ele vale até expirar; para invalidar todos, troque `AUTH_SEGREDO`); e sem HTTPS, que em produção precisa ficar a cargo de um proxy reverso. O token fica em `sessionStorage` no frontend.
 - Sem migrações: `sql/schema.sql` só vale em banco novo (ver `docker compose down -v`).
 - Sem CI.
 - O Jev e o Gemini recebem texto e imagem de páginas dos documentos. Use `CLASSIFICADOR=regras` se o conteúdo não puder sair da máquina.
