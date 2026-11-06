@@ -1,4 +1,4 @@
-"""Workers. Uso: python -m app.worker <fila>. A classificação ainda é stub (app/classificar.py)."""
+"""Workers. Uso: python -m app.worker <fila>. Classificação em app/classificar.py."""
 import logging
 import sys
 

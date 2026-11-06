@@ -24,6 +24,7 @@ CREATE TABLE documento (
     tipo_original   TEXT,                              -- tipo antes da correção humana
     revisor         TEXT,
     revisado_em     TIMESTAMPTZ,
+    motivo_revisao  TEXT,                              -- por que foi para a fila de revisão
     modelo          TEXT,
     versao_prompt   TEXT,
     probabilidades  JSONB,
