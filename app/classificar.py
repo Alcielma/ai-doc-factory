@@ -3,11 +3,12 @@
 O classificador é trocável (ver app/classificador_regras.py). A leitura e a classificação (que pode virar
 chamada de rede) ficam fora da transação; só a gravação e o fan-in rodam dentro dela.
 """
+from pathlib import Path
+
 import psycopg
 from psycopg.types.json import Jsonb
 
 from app import config
-from app.classificador_regras import classificar
 from app.roteamento import decidir
 
 TEXTO_MAX = 6000  # caracteres das primeiras páginas enviados ao classificador
@@ -17,31 +18,66 @@ def montar_texto(textos: list[str], limite: int = TEXTO_MAX) -> str:
     return "\n".join(t or "" for t in textos)[:limite]
 
 
+def _classificar(texto: str, imagem: bytes | None):
+    """Escolha do classificador (CLASSIFICADOR=regras roda sem rede)."""
+    if config.CLASSIFICADOR == "regras":
+        from app.classificador_regras import classificar
+    else:
+        from app.classificador_llm import classificar
+    return classificar(texto, imagem)
+
+
+def _imagem_primeira_pagina(lote_id: int, pagina: int) -> bytes | None:
+    png = Path(config.DATA_DIR) / f"lote_{lote_id}" / f"pag_{pagina:04d}.png"
+    try:
+        return png.read_bytes()
+    except OSError:
+        return None
+
+
+def _fan_in(conn, lote_id: int) -> None:
+    restantes = conn.execute(
+        "UPDATE lote SET docs_pendentes = docs_pendentes - 1 WHERE id = %s RETURNING docs_pendentes",
+        (lote_id,),
+    ).fetchone()[0]
+    if restantes == 0:
+        conn.execute("UPDATE lote SET estado = 'concluido' WHERE id = %s", (lote_id,))
+
+
+def marcar_erro(payload: dict) -> None:
+    """ao_esgotar: job foi para a dlq. Marca o documento como 'erro' (só a partir de 'segmentado') e faz o
+    fan-in, para o lote poder concluir. Reentrância segura: se já saiu de 'segmentado', não decrementa."""
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        row = conn.execute(
+            "UPDATE documento SET estado = 'erro' WHERE id = %s AND estado = 'segmentado' RETURNING lote_id",
+            (payload["documento_id"],),
+        ).fetchone()
+        if row is not None:
+            _fan_in(conn, row[0])
+
+
 def classificar_documento(payload: dict) -> None:
     doc_id = payload["documento_id"]
     with psycopg.connect(config.DATABASE_URL) as conn:
         doc = conn.execute(
-            "SELECT estado, segmentacao_ambigua FROM documento WHERE id = %s", (doc_id,)
+            "SELECT estado, segmentacao_ambigua, lote_id, pagina_ini FROM documento WHERE id = %s", (doc_id,)
         ).fetchone()
         if doc is None or doc[0] != "segmentado":
             return  # já decidido ou revisado: job repetido não faz nada
         textos = [t for (t,) in conn.execute(
             "SELECT texto FROM pagina WHERE documento_id = %s ORDER BY numero", (doc_id,))]
-    resultado = classificar(montar_texto(textos))
-    decisao = decidir(resultado.confianca, resultado.tipo, segmentacao_ambigua=doc[1])
+    resultado = _classificar(montar_texto(textos), _imagem_primeira_pagina(doc[2], doc[3]))
+    decisao = decidir(resultado.confianca, resultado.tipo, desacordo=resultado.desacordo,
+                      segmentacao_ambigua=doc[1])
     with psycopg.connect(config.DATABASE_URL) as conn:  # transação única: gravação + fan-in
         # só a transição segmentado -> (classificado | em_revisao) conta: não sobrescreve nem decrementa de novo
         row = conn.execute(
             "UPDATE documento SET estado = %s, tipo = %s, confianca = %s, modelo = %s, versao_prompt = %s, "
-            "probabilidades = %s, motivo_revisao = %s WHERE id = %s AND estado = 'segmentado' RETURNING lote_id",
+            "probabilidades = %s, motivo_revisao = %s, segunda_opiniao = %s WHERE id = %s AND estado = 'segmentado' RETURNING lote_id",
             (decisao.estado, decisao.tipo, resultado.confianca, resultado.modelo, resultado.versao_prompt,
-             Jsonb(resultado.probabilidades), decisao.motivo, doc_id),
+             Jsonb(resultado.probabilidades), decisao.motivo,
+             Jsonb(resultado.segunda_opiniao) if resultado.segunda_opiniao else None, doc_id),
         ).fetchone()
         if row is None:
             return
-        restantes = conn.execute(
-            "UPDATE lote SET docs_pendentes = docs_pendentes - 1 WHERE id = %s RETURNING docs_pendentes",
-            (row[0],),
-        ).fetchone()[0]
-        if restantes == 0:
-            conn.execute("UPDATE lote SET estado = 'concluido' WHERE id = %s", (row[0],))
+        _fan_in(conn, row[0])

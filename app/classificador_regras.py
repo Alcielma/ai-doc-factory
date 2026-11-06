@@ -36,6 +36,8 @@ class Resultado(NamedTuple):
     probabilidades: dict[str, float]
     modelo: str
     versao_prompt: str | None
+    desacordo: bool = False  # segunda opinião (Gemini) apontou outro tipo
+    segunda_opiniao: dict | None = None  # {modelo, versao_prompt, tipo, status}; None se não foi consultada
 
 
 def _normalizar(texto: str) -> str:
@@ -43,7 +45,7 @@ def _normalizar(texto: str) -> str:
     return sem_acento.lower()
 
 
-def classificar(texto: str) -> Resultado:
+def classificar(texto: str, imagem: bytes | None = None) -> Resultado:  # imagem: ignorada pelas regras
     norm = _normalizar(texto)
     contagens = {t: sum(len(p.findall(norm)) for p in ps) for t, ps in _PADROES.items()}
     total = sum(contagens.values())
