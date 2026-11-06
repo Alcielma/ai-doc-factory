@@ -147,11 +147,14 @@ A pasta `frontend/` é um projeto separado do backend (Vite + React + TypeScript
 | Método e rota | Descrição | Exemplo |
 |---|---|---|
 | `GET /health` | Verifica Postgres e Redis | `curl localhost:8000/health` |
-| `POST /lotes` | Envia PDF, JPEG, PNG ou TIFF (multipágina inclusive); imagens viram `original.pdf`. Arquivo inválido: 400 | `curl -F "arquivo=@lote.pdf" localhost:8000/lotes` |
+| `POST /lotes` | Envia PDF, JPEG, PNG ou TIFF (multipágina inclusive); imagens viram `original.pdf`. Arquivo inválido: 400. Campo opcional `empresa_id` vincula o lote a uma empresa cadastrada (404 se não existir; 409 se o lote já pertence a outra) | `curl -F "arquivo=@lote.pdf" localhost:8000/lotes` |
 | `GET /lotes/{id}` | Estado do lote e lista de documentos (intervalo, tipo, confiança, probabilidades) | `curl localhost:8000/lotes/1` |
 | `GET /documentos/{id}` | Documento com tipo, confiança, motivo de revisão e páginas (texto e `imagem_url`) | `curl localhost:8000/documentos/2` |
 | `GET /lotes/{lote_id}/paginas/{n}/imagem` | PNG da página | `curl -o p1.png localhost:8000/lotes/1/paginas/1/imagem` |
 | `GET /busca?q=...&limite=20` | Full-text search (`portuguese`); devolve lote, página e trecho com `<b>` | `curl "localhost:8000/busca?q=contrato"` |
+| `POST /cadastro-empresas` | Cadastra empresa por nome (`{"nome": "..."}`); 201. Nome vazio: 422; nome repetido (sem diferenciar caixa nem espaços nas pontas): 409 | `curl -H "Content-Type: application/json" -d '{"nome":"Alfa Ltda"}' localhost:8000/cadastro-empresas` |
+| `GET /cadastro-empresas` | Lista empresas com seus lotes e documentos (`n_lotes`, `n_documentos`) | `curl localhost:8000/cadastro-empresas` |
+| `GET /cadastro-empresas/{id}` | Uma empresa no mesmo formato; 404 se não existir | `curl localhost:8000/cadastro-empresas/1` |
 | `GET /revisao` | Fila de documentos `em_revisao`, com tipo sugerido e motivo | `curl localhost:8000/revisao` |
 | `POST /documentos/{id}/revisao` | Corrige o tipo; o documento vira `revisado` e `tipo_original` guarda o tipo sugerido. 409 se o documento não está em revisão | ver abaixo |
 

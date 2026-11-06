@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import config
 from app.routers import r  # noqa: F401  (reexportado: conexão Redis compartilhada)
 from app.routers.busca.routers import router as busca
+from app.routers.cadastro_empresas.routers import router as cadastro_empresas
 from app.routers.documentos.routers import router as documentos
 from app.routers.empresas.routers import router as empresas
 from app.routers.lotes.routers import router as lotes
@@ -17,5 +18,5 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-for router in (saude, lotes, busca, documentos, revisao, empresas):
+for router in (saude, lotes, busca, documentos, revisao, empresas, cadastro_empresas):
     app.include_router(router)

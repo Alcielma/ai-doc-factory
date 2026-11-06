@@ -1,4 +1,4 @@
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import FileResponse
 
 from app.routers.lotes import actions
@@ -8,10 +8,11 @@ router = APIRouter()
 
 
 @router.post("/lotes")
-def criar_lote(arquivo: UploadFile = File(...)):
+def criar_lote(arquivo: UploadFile = File(...), empresa_id: int | None = Form(None)):
+    actions.validar_empresa(empresa_id)  # antes de gravar ou enfileirar qualquer coisa
     dados = arquivo.file.read()
     pdf = converter_para_pdf(dados)
-    return actions.criar_lote(dados, pdf, arquivo.filename)
+    return actions.criar_lote(dados, pdf, arquivo.filename, empresa_id)
 
 
 @router.get("/lotes/{lote_id}")
