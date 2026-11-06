@@ -66,7 +66,13 @@ A lista fica em configuração, em um único lugar, nunca espalhada pelo código
 - **Jev:** classificador principal, só texto, via OpenRouter (`OPENROUTER_API_KEY`, `JEV_MODEL`). Devolve escolha, confiança e probabilidades por opção. **Antes de implementar, faça uma chamada de teste e confirme o formato real da resposta.** Se não houver confiança utilizável, avise e proponha alternativa em vez de inventar.
 - **Gemini:** segunda opinião (Google AI Studio, `GEMINI_API_KEY`), com a imagem da primeira página, usado só quando a confiança do Jev for baixa. A confiança autodeclarada do Gemini **não** entra na regra de decisão.
 - **Gemini na análise de folha de ponto (Goal 6):** modelo em `GEMINI_ANALISE_MODEL`, padrão `gemini-3.5-flash`. A documentação do Gemini indica esse ID como obsoleto e redirecionado para um modelo mais novo, então registre o modelo realmente devolvido pela API.
-- **Jev no score de risco (Goal 6):** usa o tipo `Score` do Jev. Confirme o formato real da resposta em uma chamada de teste, como no classificador.
+- **Jev no score de risco (Goal 6):** usa uma pergunta `Score` do Jev por dimensão de risco, sobre as divergências já apuradas.
+- **Toda implementação com Jev segue a skill `building-with-typesafe-jev`.** Leia o `SKILL.md` e o `api-reference.md` dela antes de escrever perguntas. Em resumo:
+  - Uma decisão simples por pergunta, com `state` em JSON nomeado e instruções que apontam para ele por caminho.
+  - Níveis de `Score` descrevem situações concretas, com uma dimensão cada.
+  - `Choice` tem a lista completa mais uma opção de nenhum dos anteriores.
+  - Contas, datas e contagens ficam no código.
+  - Perguntas, limiares e pesos ficam em um único módulo de constantes.
 - Toda decisão de confiança (limiares, roteamento) é feita em código determinístico, não pelo LLM.
 - Cache em disco das respostas dos LLMs, com chave = hash da entrada + modelo + prompt, para a demo não depender de rede.
 - Em cada classificação, guarde o modelo usado, a versão do prompt e as probabilidades.
@@ -167,10 +173,11 @@ Para documentos do tipo `folha_ponto`, encontrar divergências, com foco princip
 **Fluxo:**
 
 1. Documento que termina como `folha_ponto`, inclusive por correção humana, entra na fila `analisar_folha_ponto` (payload `{documento_id}`), consumida pelo serviço `worker_analise`. A análise não participa do fan-in do lote.
-2. O Gemini recebe o texto do OCR e o perfil padrão e devolve em JSON as divergências (tipo, data, minutos, base legal, trecho de evidência) e uma análise breve.
-3. O Jev recebe a análise e as divergências e devolve o score de risco com as probabilidades por nível.
-4. Persistir em `analise_ponto`, uma linha por documento (reprocessar substitui, sem duplicar): perfil usado, divergências, análise, score, probabilidades, modelos e versões dos prompts.
-5. `GET /documentos/{id}/analise-ponto` devolve o resultado.
+2. O Gemini recebe o texto do OCR, a imagem das páginas e o perfil padrão e devolve em JSON as marcações por dia, as divergências (tipo, data, minutos, base legal, trecho de evidência) e uma análise breve.
+3. O código recalcula os minutos a partir das marcações e compara com o perfil. Quando o resultado não bater com o do Gemini, vale o cálculo do código e a diferença é registrada. O código também detecta o ponto britânico (horários quase idênticos ao longo do período), com limite configurável, como sinal de risco e não como prova de fraude.
+4. O Jev recebe as divergências apuradas e a análise e responde uma pergunta `Score` por dimensão (horas extras, intervalos, descanso e registro), em uma única requisição, com níveis concretos. O score geral é calculado em código: cada dimensão é normalizada e o resultado é o **máximo** entre elas, sem média, porque um problema grave não pode ser diluído. Dimensão com confiança baixa fica como indeterminada e manda o documento para revisão.
+5. Persistir em `analise_ponto`, uma linha por documento (reprocessar substitui, sem duplicar): perfil usado, marcações, divergências, análise, scores por dimensão, score geral, probabilidades, modelos e versões dos prompts.
+6. `GET /documentos/{id}/analise-ponto` devolve o resultado.
 
 O score é apoio à auditoria, não parecer jurídico. A convenção coletiva e o acordo de compensação podem alterar os limites do perfil padrão. O README deve registrar as duas ressalvas.
 
