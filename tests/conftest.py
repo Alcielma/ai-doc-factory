@@ -17,3 +17,17 @@ def sem_rede(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "OPENROUTER_API_KEY", "chave-falsa-teste")
     monkeypatch.setattr(config, "GEMINI_API_KEY", "chave-falsa-teste")
     monkeypatch.setattr(config, "JEV_MODEL", "jev-teste")
+
+
+@pytest.fixture(autouse=True)
+def extracoes(monkeypatch):
+    """Não enfileira extração de verdade (o worker do compose chamaria o Gemini). Devolve os ids pedidos."""
+    from app import api, extracao
+    pedidas = []
+
+    def registrar(documento_id, r=None):
+        pedidas.append(documento_id)
+    registrar.__wrapped__ = extracao.enfileirar_extracao  # a função real, para testá-la
+    monkeypatch.setattr(extracao, "enfileirar_extracao", registrar)
+    monkeypatch.setattr(api, "enfileirar_extracao", registrar)
+    return pedidas
