@@ -132,6 +132,7 @@ Segmentação em cascata:
 - Salvar o texto por página no banco.
 - Gerar um PDF pesquisável por documento (OCRmyPDF ou camada de texto sobre a imagem). Se não der tempo, entregar a busca no banco e registrar isso claramente.
 - `GET /busca?q=`: full-text search do PostgreSQL (configuração `portuguese`), retornando lote, página e trecho destacado.
+- O upload (`POST /lotes`) aceita PDF, JPEG, PNG e TIFF (inclusive multipágina); imagens são convertidas para `original.pdf` na chegada.
 
 **Aceite:** buscar uma palavra presente num documento (ex.: nome de um funcionário) retorna a página correta.
 
