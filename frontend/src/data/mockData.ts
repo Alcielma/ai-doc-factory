@@ -1,0 +1,221 @@
+import type { DocumentCategory, DetailedDocument, ReviewPendingDocument } from '../types'
+
+export const INITIAL_CATEGORIES: DocumentCategory[] = [
+  {
+    id: 'cnh',
+    slug: 'CNH',
+    name: 'CNH',
+    count: 3,
+    totalPercentage: 33,
+    icon: 'car',
+  },
+  {
+    id: 'cpf',
+    slug: 'CPF',
+    name: 'CPF',
+    count: 2,
+    totalPercentage: 22,
+    icon: 'hash',
+  },
+  {
+    id: 'rg',
+    slug: 'RG',
+    name: 'RG',
+    count: 2,
+    totalPercentage: 22,
+    icon: 'idcard',
+  },
+  {
+    id: 'residencia',
+    slug: 'Comprovante de residência',
+    name: 'Comprovante de residência',
+    count: 2,
+    totalPercentage: 22,
+    icon: 'home',
+  },
+  {
+    id: 'certidao_nascimento',
+    slug: 'Certidão de nascimento',
+    name: 'Certidão de nascimento',
+    count: 0,
+    totalPercentage: 0,
+    icon: 'file',
+  },
+  {
+    id: 'contrato_social',
+    slug: 'Contrato social',
+    name: 'Contrato social',
+    count: 0,
+    totalPercentage: 0,
+    icon: 'briefcase',
+  },
+]
+
+export const INITIAL_DETAILED_DOCUMENTS: DetailedDocument[] = [
+  // CNH Documents (exatamente como na imagem da categoria CNH)
+  {
+    id: 'doc-cnh-1',
+    filename: 'cnh_marina_alves.pdf',
+    category: 'cnh',
+    personName: 'Marina Alves',
+    pages: 2,
+    processedDate: '07/10/2026',
+    confidence: 0.76,
+    metadata: {
+      registrationNumber: '01992837465',
+      categoryType: 'B',
+      expirationDate: '21/11/2029',
+    },
+  },
+  {
+    id: 'doc-cnh-2',
+    filename: 'cnh_carlos_lima.jpg',
+    category: 'cnh',
+    personName: 'Carlos Lima',
+    pages: 1,
+    processedDate: '29/09/2026',
+    confidence: 0.88,
+    metadata: {
+      registrationNumber: '05583920114',
+      categoryType: 'AB',
+      expirationDate: '03/02/2028',
+    },
+  },
+  {
+    id: 'doc-cnh-3',
+    filename: 'cnh_ana_souza.pdf',
+    category: 'cnh',
+    personName: 'Ana Souza',
+    pages: 2,
+    processedDate: '27/09/2026',
+    confidence: 0.97,
+    metadata: {
+      registrationNumber: '04128837192',
+      categoryType: 'B',
+      expirationDate: '12/08/2030',
+    },
+  },
+  // CPF Documents
+  {
+    id: 'doc-cpf-1',
+    filename: 'cpf_ana_paula.pdf',
+    category: 'cpf',
+    personName: 'Ana Paula Santos',
+    pages: 1,
+    processedDate: '15/10/2026',
+    confidence: 0.99,
+    metadata: {
+      cpfNumber: '123.456.789-00',
+    },
+  },
+  {
+    id: 'doc-cpf-2',
+    filename: 'cpf_roberto_nunes.pdf',
+    category: 'cpf',
+    personName: 'Roberto Nunes',
+    pages: 1,
+    processedDate: '18/10/2026',
+    confidence: 0.94,
+    metadata: {
+      cpfNumber: '987.654.321-99',
+    },
+  },
+  // RG Documents
+  {
+    id: 'doc-rg-1',
+    filename: 'rg_lucas_ferreira.pdf',
+    category: 'rg',
+    personName: 'Lucas Ferreira',
+    pages: 2,
+    processedDate: '20/10/2026',
+    confidence: 0.95,
+    metadata: {
+      rgNumber: '44.555.666-7',
+    },
+  },
+  {
+    id: 'doc-rg-2',
+    filename: 'rg_juliana_lima.pdf',
+    category: 'rg',
+    personName: 'Juliana Lima',
+    pages: 2,
+    processedDate: '22/10/2026',
+    confidence: 0.97,
+    metadata: {
+      rgNumber: '33.222.111-0',
+    },
+  },
+  // Comprovante de residência
+  {
+    id: 'doc-res-1',
+    filename: 'comprovante_enel_setembro.pdf',
+    category: 'residencia',
+    personName: 'Marina Alves',
+    pages: 1,
+    processedDate: '25/10/2026',
+    confidence: 0.93,
+    metadata: {
+      address: 'Av. Paulista, 1000 - São Paulo, SP',
+    },
+  },
+  {
+    id: 'doc-res-2',
+    filename: 'comprovante_sabesp_outubro.pdf',
+    category: 'residencia',
+    personName: 'Carlos Lima',
+    pages: 1,
+    processedDate: '28/10/2026',
+    confidence: 0.91,
+    metadata: {
+      address: 'Rua Augusta, 450 - São Paulo, SP',
+    },
+  },
+]
+
+export const INITIAL_REVIEW_PENDING_DOCUMENTS: ReviewPendingDocument[] = [
+  {
+    id: 'rev-01',
+    filename: 'scan_0045.jpg',
+    issueType: 'baixa_qualidade',
+    issueLabel: 'Baixa qualidade da imagem',
+    timeAgo: 'Há 8 dias',
+    processedDate: '28/10/2026',
+    pages: 1,
+    issueDescription:
+      'Baixa qualidade da imagem: Imagem com baixa resolução e reflexo sobre o número do documento.',
+    suggestedType: 'RG',
+    suggestedConfidence: 0.42,
+    extractedFields: [{ key: 'Nome', value: 'Roberto Nunes' }],
+    personName: 'Roberto Nunes',
+  },
+  {
+    id: 'rev-02',
+    filename: 'documento_sem_nome.pdf',
+    issueType: 'conteudo_ilegivel',
+    issueLabel: 'Conteúdo ilegível',
+    timeAgo: 'Há 3 dias',
+    processedDate: '02/11/2026',
+    pages: 2,
+    issueDescription:
+      'Conteúdo ilegível: Documento escaneado com sombras excessivas nas bordas e dobra no cabeçalho.',
+    suggestedType: 'CPF',
+    suggestedConfidence: 0.38,
+    extractedFields: [{ key: 'Nome', value: 'Carlos Mendes' }],
+    personName: 'Carlos Mendes',
+  },
+  {
+    id: 'rev-03',
+    filename: 'img_2231.png',
+    issueType: 'confiança_baixa',
+    issueLabel: 'Confiança baixa',
+    timeAgo: 'Hoje',
+    processedDate: '05/11/2026',
+    pages: 1,
+    issueDescription:
+      'Confiança baixa: Layout atípico e texto com baixa aderência aos modelos cadastrados.',
+    suggestedType: 'Comprovante de residência',
+    suggestedConfidence: 0.45,
+    extractedFields: [{ key: 'Nome', value: 'Juliana Castro' }],
+    personName: 'Juliana Castro',
+  },
+]
