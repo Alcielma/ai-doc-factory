@@ -157,32 +157,10 @@ export function App() {
   }
 
   // Handle upload completion
-  const handleUploadSuccess = (filename: string) => {
-    const targetCat = categories[0]
-    const newDoc: DetailedDocument = {
-      id: `doc-${Date.now()}`,
-      filename: filename,
-      category: targetCat.id,
-      personName: 'Documento Importado',
-      pages: 1,
-      processedDate: 'Hoje',
-      confidence: 0.95,
-      metadata: {
-        registrationNumber: '01298374652',
-        categoryType: 'B',
-      },
-    }
-    setDetailedDocs((prev) => [newDoc, ...prev])
-    setCategories((prev) => {
-      const next = prev.map((c, i) =>
-        i === 0 ? { ...c, count: c.count + 1 } : c
-      )
-      const newTotal = next.reduce((sum, item) => sum + item.count, 0)
-      return next.map((c) => ({
-        ...c,
-        totalPercentage: newTotal > 0 ? Math.round((c.count / newTotal) * 100) : 0,
-      }))
-    })
+  const handleUploadSuccess = (filename: string, loteId: number) => {
+    console.log(`Lote ${loteId} (${filename}) enviado para processamento.`)
+    // Aqui poderíamos iniciar um polling para verificar o status do lote
+    // Por enquanto, apenas notificamos o sucesso no console
   }
 
   // Active documents for the category view
