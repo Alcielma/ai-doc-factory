@@ -1,4 +1,4 @@
-"""Workers. Uso: python -m app.worker <fila>. Classificação ainda é stub."""
+"""Workers. Uso: python -m app.worker <fila>. A classificação ainda é stub (app/classificar.py)."""
 import logging
 import sys
 
@@ -6,18 +6,13 @@ import redis
 
 from app import config
 from app.filas import rodar_worker
+from app.classificar import classificar_documento
 from app.ocr import processar_lote
-
-
-def stub(nome: str):
-    def handler(payload: dict) -> None:
-        logging.getLogger(nome).info("job recebido: %s", payload)
-    return handler
 
 
 HANDLERS = {
     config.FILA_SEGMENTAR: processar_lote,
-    config.FILA_CLASSIFICAR: stub("classificar_documento"),
+    config.FILA_CLASSIFICAR: classificar_documento,
 }
 
 if __name__ == "__main__":
