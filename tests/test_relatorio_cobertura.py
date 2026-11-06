@@ -46,3 +46,23 @@ def test_ambiguo_e_sem_probabilidade_nao_ajudam():
     itens, _ = rotular(paginas, [_doc(1, 1, 0.99, {"aso": 1.0}, amb=True), _doc(1, 1, 0.99, {"aso": 0.0})])
     c = curva(itens, [0.5])[0]
     assert c["automaticos"] == 1 and c["corretos"] == 0  # o ambíguo vai para revisão; o sem sugestão erra
+
+
+def test_nenhum_dos_anteriores_vai_para_revisao_em_qualquer_limiar():
+    paginas = {1: "holerite", 2: "holerite"}
+    probs = {"holerite": 0.0, "nenhum_dos_anteriores": 1.0}
+    itens, _ = rotular(paginas, [_doc(1, 2, 1.0, probs)])  # confiança 1.0, mas sugestão é "nenhum"
+    for l in curva(itens, [0.0, 0.5, 0.99]):
+        assert l["automaticos"] == 0 and l["precisao_automatico"] is None and l["pct_revisao"] == 1.0
+
+
+def test_tipo_desconhecido_e_baixa_confianca_seguem_o_roteamento_real():
+    paginas = {1: "holerite", 2: "aso", 3: "aso"}
+    docs = [
+        {**_doc(1, 1, 0.99, {"holerite": 1.0}), "tipo": "desconhecido"},  # já roteado como desconhecido
+        _doc(2, 2, 0.40, {"aso": 1.0}),                                     # abaixo de CONF_MIN: revisão
+        _doc(3, 3, 0.95, {"aso": 1.0}),                                     # automático
+    ]
+    itens, _ = rotular(paginas, docs)
+    c = curva(itens, [0.9])[0]
+    assert c["automaticos"] == 1 and c["precisao_automatico"] == 1.0
