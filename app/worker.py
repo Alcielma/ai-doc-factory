@@ -1,4 +1,4 @@
-"""Workers. Uso: python -m app.worker <fila>. Handlers são stubs (etapas seguintes)."""
+"""Workers. Uso: python -m app.worker <fila>. Classificação ainda é stub."""
 import logging
 import sys
 
@@ -6,6 +6,7 @@ import redis
 
 from app import config
 from app.filas import rodar_worker
+from app.ocr import processar_lote
 
 
 def stub(nome: str):
@@ -15,7 +16,7 @@ def stub(nome: str):
 
 
 HANDLERS = {
-    config.FILA_SEGMENTAR: stub("segmentar_lote"),
+    config.FILA_SEGMENTAR: processar_lote,
     config.FILA_CLASSIFICAR: stub("classificar_documento"),
 }
 
