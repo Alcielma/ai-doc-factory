@@ -76,3 +76,13 @@ INSERT INTO perfil_jornada (perfil, parametro, valor, unidade, base_legal) VALUE
     ('clt_padrao', 'noturno_fim_min',              300,  'min', 'CLT art. 73, § 2º'),
     ('clt_padrao', 'hora_noturna_min',             52.5, 'min', 'CLT art. 73, § 1º'),
     ('clt_padrao', 'adicional_noturno_pct',        20,   'pct', 'CLT art. 73');
+
+-- Campos extraídos de cada documento (Goal 7). Um valor por (documento, campo); upsert.
+CREATE TABLE documento_campos (
+    documento_id    BIGINT NOT NULL REFERENCES documento(id) ON DELETE CASCADE,
+    campo           TEXT NOT NULL,
+    valor           TEXT NOT NULL,
+    origem          TEXT NOT NULL,                     -- quem gravou: modelo, humano, teste...
+    atualizado_em   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (documento_id, campo)
+);

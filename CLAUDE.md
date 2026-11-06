@@ -208,7 +208,8 @@ Score de 0 a 100 sobre a **empresa prestadora**: a terceirizada que fornece os f
 - Documento ausente reduz a pontuação.
 - Documento vencido reduz a pontuação.
 - Divergências são sinalizadas para conferência e reduzem a nota de Consistência.
-- Documento não analisado (`segmentado`, `em_revisao`, `erro` ou com tipo `desconhecido`) fica pendente, sem nota zero automática. Enquanto houver documento de tipo não identificado, um obrigatório faltante conta como pendente, não como ausente.
+- Documento não analisado (`segmentado`, `em_revisao`, `erro` ou com tipo `desconhecido`) fica pendente, sem nota zero automática. A extração de campos roda também para `em_revisao`, para o documento ficar ligado à sua empresa; `segmentado` e `erro` não têm empresa.
+- Completude e pendência: um obrigatório faltante conta como pendente somente se a PRÓPRIA empresa tiver documento não analisado, respeitando o tipo: documento em revisão com tipo sugerido conhecido cobre só esse tipo, e com tipo `desconhecido` pode cobrir qualquer faltante. Fora disso o faltante é ausente e desconta. Documento sem empresa não afeta a Completude de nenhuma empresa; aparece só em `sem_empresa` no lote, com o motivo. Empresa sem nenhum obrigatório presente tem Completude 0 de 5, e o score existe.
 - Critério sem nada analisável fica pendente, e seu peso é redistribuído entre os demais. Nesse caso, ou quando houver pendências, o score é marcado como `provisorio`. Sem nenhum critério analisável, não há score.
 - O score mostra o motivo de cada desconto: critério, documento, regra e pontos descontados.
 - A correção humana entra no cálculo: o score é recalculado a partir do estado atual dos documentos.
@@ -217,7 +218,7 @@ Score de 0 a 100 sobre a **empresa prestadora**: a terceirizada que fornece os f
 
 - Obrigatórios: `aso`, `contrato_trabalho`, `holerite`, `folha_pagamento` e `folha_ponto`. `atestado_medico` e `recibo_ferias` só existem quando há afastamento ou férias, então não contam como ausência.
 - Validade: `aso` e `contrato_trabalho` por prazo determinado. Contrato por prazo indeterminado não se aplica, em vez de ficar pendente. Confira o prazo do ASO na NR-7. Documento sem data legível fica pendente. A data de referência é registrada no resultado.
-- Consistência: CNPJ e razão social são comparados entre os documentos da empresa. Nome, matrícula e data de admissão só são comparados entre documentos do mesmo funcionário (mesmo CPF), nunca entre pessoas diferentes.
+- Consistência: o CNPJ é a chave de agrupamento da empresa e por isso não entra na Consistência; só a razão social é comparada entre os documentos da empresa. Nome, matrícula e data de admissão só são comparados entre documentos do mesmo funcionário (mesmo CPF), nunca entre pessoas diferentes.
 - `provisorio`: só com documento não analisado, obrigatório pendente ou critério inteiro pendente. Campo ausente aparece nas pendências, mas não marca o score como provisório.
 
 **Identificação da empresa:** o Gemini extrai o CNPJ e a razão social da prestadora, e o código valida os dígitos verificadores. Documento sem CNPJ claro, com CNPJ inválido ou sem distinção entre prestadora e tomadora fica pendente, listado no lote, sem ser ligado a uma empresa por palpite.

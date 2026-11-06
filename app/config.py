@@ -24,6 +24,7 @@ DATA_DIR = os.getenv("DATA_DIR", "/data")
 
 FILA_SEGMENTAR = "segmentar_lote"
 FILA_CLASSIFICAR = "classificar_documento"
+FILA_EXTRAIR = "extrair_campos"  # Goal 7: fora do fan-in do lote
 MAX_TENTATIVAS = 3
 
 # Segmentação: similaridade TF-IDF (cosseno) entre páginas consecutivas.
