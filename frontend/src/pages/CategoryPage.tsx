@@ -4,8 +4,13 @@ import {
   ChevronLeft,
   ChevronDown,
   FileText,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  X,
 } from 'lucide-react'
 import type { DocumentCategory, DetailedDocument } from '../types'
+import { apiService } from '../services/api'
 
 interface CategoryPageProps {
   category: DocumentCategory
@@ -22,6 +27,21 @@ const CategoryPage: React.FC<CategoryPageProps> = ({
   const [selectedPerson, setSelectedPerson] = useState('todas')
   const [selectedConfidence, setSelectedConfidence] = useState('todas')
   const [sortBy, setSortBy] = useState<'recentes' | 'antigos' | 'confianca'>('recentes')
+  const [selectedDocAnalysis, setSelectedDocAnalysis] = useState<any | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+
+  const handleShowAnalysis = async (docId: string) => {
+    setIsAnalyzing(true)
+    try {
+      const analysis = await apiService.getAnalisePonto(Number(docId))
+      setSelectedDocAnalysis(analysis)
+    } catch (err) {
+      console.error('Erro ao buscar análise:', err)
+      alert('Análise de ponto ainda não disponível para este documento.')
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
 
   // Get unique person names for the dropdown
   const peopleList = useMemo(() => {
@@ -187,9 +207,22 @@ const CategoryPage: React.FC<CategoryPageProps> = ({
 
               {/* Document Content */}
               <div className="flex-1 min-w-0">
-                <h3 className="text-base font-bold text-[#2d0a33] dark:text-[#f8f5fc] truncate">
-                  {doc.filename}
-                </h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-base font-bold text-[#2d0a33] dark:text-[#f8f5fc] truncate">
+                    {doc.filename}
+                  </h3>
+                  
+                  {/* Status de Auditoria (Integração com Goal 6 do Backend) */}
+                  {category.id === 'folha_ponto' && (
+                    <button
+                      onClick={() => handleShowAnalysis(doc.id)}
+                      className="shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-bold bg-[#f3e8ff] dark:bg-[#2e1065] text-[#7e22ce] dark:text-[#d8b4fe] border border-[#e9d5ff] dark:border-[#4c1d95] hover:bg-[#e9d5ff] transition-colors"
+                    >
+                      <Search className="w-3 h-3" />
+                      Auditoria
+                    </button>
+                  )}
+                </div>
                 <p className="text-xs sm:text-sm text-[#6e6378] dark:text-[#a093a8] mt-0.5">
                   {doc.personName} · {doc.pages} página{doc.pages > 1 ? 's' : ''} · Processado em {doc.processedDate} · Confiança {Math.round(doc.confidence * 100)}%
                 </p>
@@ -232,6 +265,99 @@ const CategoryPage: React.FC<CategoryPageProps> = ({
           ))
         )}
       </div>
+
+      {/* Modal de Auditoria de Ponto (Integração Goal 6) */}
+      {selectedDocAnalysis && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-2xl bg-white dark:bg-[#1a1120] rounded-2xl border border-[#ebe5ef] dark:border-[#2f1e39] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-[#ebe5ef] dark:border-[#2f1e39] flex items-center justify-between bg-[#fbf9fc] dark:bg-[#1f1325]">
+              <div>
+                <h3 className="text-lg font-bold text-[#2d0a33] dark:text-[#f8f5fc]">Auditoria de Folha de Ponto</h3>
+                <p className="text-xs text-[#6e6378] dark:text-[#a093a8]">Análise automatizada de riscos trabalhistas</p>
+              </div>
+              <button 
+                onClick={() => setSelectedDocAnalysis(null)}
+                className="p-2 rounded-xl hover:bg-[#f3e8ff] dark:hover:bg-[#2e1065] text-[#6e6378] dark:text-[#a093a8] transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-6">
+              {/* Score Geral */}
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-[#f8f5fa] dark:bg-[#201326] border border-[#ece4f1] dark:border-[#382240]">
+                <div className="flex items-center gap-3">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${
+                    selectedDocAnalysis.score_geral >= 85 ? 'bg-emerald-500' :
+                    selectedDocAnalysis.score_geral >= 65 ? 'bg-amber-500' : 'bg-red-500'
+                  }`}>
+                    {selectedDocAnalysis.score_geral}%
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-[#2d0a33] dark:text-[#f8f5fc]">Score de Conformidade</div>
+                    <div className="text-[10px] text-[#6e6378] dark:text-[#a093a8]">Baseado em 4 dimensões de risco</div>
+                  </div>
+                </div>
+                {selectedDocAnalysis.requer_revisao && (
+                  <span className="px-3 py-1 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] font-bold border border-red-200 dark:border-red-800">
+                    Requer Revisão
+                  </span>
+                )}
+              </div>
+
+              {/* Divergências Encontradas */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-[#6e6378] dark:text-[#a093a8] uppercase tracking-wider">Divergências Identificadas</h4>
+                {selectedDocAnalysis.divergencias && selectedDocAnalysis.divergencias.length > 0 ? (
+                  <div className="grid gap-2">
+                    {selectedDocAnalysis.divergencias.map((div: any, idx: number) => (
+                      <div key={idx} className="flex items-start gap-3 p-3 rounded-xl border border-red-100 dark:border-red-900/20 bg-red-50/50 dark:bg-red-950/10">
+                        <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="text-xs font-bold text-red-800 dark:text-red-300">{div.tipo.replace(/_/g, ' ')}</div>
+                          <p className="text-[10px] text-red-700 dark:text-red-400 mt-0.5">{div.evidencia || 'Sem evidência detalhada'}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/20 bg-emerald-50/50 dark:bg-emerald-950/10">
+                    <CheckCircle className="w-4 h-4 text-emerald-500" />
+                    <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300">Nenhuma divergência crítica encontrada</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Análise da IA */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-[#6e6378] dark:text-[#a093a8] uppercase tracking-wider">Parecer da Auditoria (IA)</h4>
+                <div className="p-4 rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] bg-white dark:bg-[#150c18] text-sm text-[#2d0a33] dark:text-[#f8f5fc] leading-relaxed italic">
+                  "{selectedDocAnalysis.analise}"
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-[#ebe5ef] dark:border-[#2f1e39] bg-[#fbf9fc] dark:bg-[#1f1325] flex justify-end">
+              <button 
+                onClick={() => setSelectedDocAnalysis(null)}
+                className="px-6 py-2 rounded-xl bg-[#3e0b48] dark:bg-[#9917a2] text-white text-sm font-bold shadow-sm hover:opacity-90 transition-opacity"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Overlay para Auditoria */}
+      {isAnalyzing && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
+          <div className="p-4 bg-white dark:bg-[#1a1120] rounded-2xl shadow-xl flex items-center gap-3 border border-[#ebe5ef] dark:border-[#2f1e39]">
+            <Clock className="w-5 h-5 text-[#9333ea] animate-spin" />
+            <span className="text-sm font-bold text-[#2d0a33] dark:text-white">Gerando relatório de auditoria...</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
