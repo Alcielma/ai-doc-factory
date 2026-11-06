@@ -5,12 +5,8 @@ import { UploadModal } from './components/UploadModal'
 import HomePage from './pages/HomePage'
 import CategoryPage from './pages/CategoryPage'
 import ManualReviewPage from './pages/ManualReviewPage'
-import {
-  INITIAL_CATEGORIES,
-  INITIAL_DETAILED_DOCUMENTS,
-  INITIAL_REVIEW_PENDING_DOCUMENTS,
-} from './data/mockData'
-import type { DocumentCategory, DetailedDocument, ReviewPendingDocument } from './types'
+import { apiService } from './services/api'
+import type { DocumentCategory, DetailedDocument, ReviewPendingDocument, Company } from './types'
 import type { FilterType } from './components/FilterBar'
 
 export function App() {
@@ -27,11 +23,12 @@ export function App() {
   const [currentView, setCurrentView] = useState<'home' | 'categoria' | 'revisao'>('home')
 
   // Data states
-  const [categories, setCategories] = useState<DocumentCategory[]>(INITIAL_CATEGORIES)
-  const [detailedDocs, setDetailedDocs] = useState<DetailedDocument[]>(INITIAL_DETAILED_DOCUMENTS)
-  const [reviewPendingDocs, setReviewPendingDocs] = useState<ReviewPendingDocument[]>(
-    INITIAL_REVIEW_PENDING_DOCUMENTS
-  )
+  const [categories, setCategories] = useState<DocumentCategory[]>([])
+  const [detailedDocs, setDetailedDocs] = useState<DetailedDocument[]>([])
+  const [reviewPendingDocs, setReviewPendingDocs] = useState<ReviewPendingDocument[]>([])
+  const [companies, setCompanies] = useState<Company[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // Selected category when in 'categoria' view
   const [selectedCategory, setSelectedCategory] = useState<DocumentCategory | null>(null)
@@ -55,6 +52,99 @@ export function App() {
       localStorage.setItem('theme', 'light')
     }
   }, [isDark])
+
+  // Fetch data from backend
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const [empresasData, docsAgrupados] = await Promise.all([
+          apiService.getEmpresas(),
+          apiService.getDocumentosAgrupados()
+        ])
+
+        setCompanies(empresasData)
+
+        // Map backend groups to DocumentCategory
+        const mappedCategories: DocumentCategory[] = docsAgrupados.grupos.map((g: any) => {
+          const id = g.tipo || 'desconhecido'
+          const icons: Record<string, DocumentCategory['icon']> = {
+            cnh: 'car',
+            cpf: 'hash',
+            rg: 'idcard',
+            folha_ponto: 'file',
+            holerite: 'briefcase',
+            residencia: 'home',
+          }
+
+          return {
+            id,
+            name: id.toUpperCase().replace('_', ' '),
+            slug: id,
+            count: g.total,
+            totalPercentage: 0, // Will be calculated after
+            icon: icons[id] || 'file'
+          }
+        })
+
+        const totalDocs = mappedCategories.reduce((acc, cat) => acc + cat.count, 0)
+        const categoriesWithPercentage = mappedCategories.map(cat => ({
+          ...cat,
+          totalPercentage: totalDocs > 0 ? Math.round((cat.count / totalDocs) * 100) : 0
+        }))
+
+        setCategories(categoriesWithPercentage)
+
+        // Flatten all documents from groups
+        const allDocs: DetailedDocument[] = docsAgrupados.grupos.flatMap((g: any) => 
+          g.documentos.map((d: any) => ({
+            id: String(d.id),
+            filename: d.nome_arquivo,
+            category: d.tipo || 'desconhecido',
+            personName: d.pessoa || 'Não identificado',
+            pages: d.n_paginas,
+            processedDate: new Date(d.processado_em).toLocaleDateString('pt-BR'),
+            confidence: d.confianca,
+            metadata: {
+              registrationNumber: d.campos?.numero_registro || d.campos?.cpf || '',
+              categoryType: d.campos?.categoria || '',
+              expirationDate: d.campos?.data_vencimento || '',
+            }
+          }))
+        )
+        setDetailedDocs(allDocs)
+
+        // Fetch review queue
+        const reviewData = await apiService.getReviewQueue()
+        const mappedReviewDocs: ReviewPendingDocument[] = reviewData.map((d: any) => ({
+          id: String(d.id),
+          loteId: d.lote_id,
+          filename: d.nome_arquivo || `Documento #${d.id}`,
+          issueType: 'confiança_baixa',
+          issueLabel: d.motivo_revisao || 'Revisão Pendente',
+          timeAgo: 'Recentemente',
+          processedDate: new Date(d.criado_em).toLocaleDateString('pt-BR'),
+          pages: (d.pagina_fim - d.pagina_ini) + 1,
+          startPage: d.pagina_ini,
+          issueDescription: d.motivo_revisao || 'Documento requer verificação manual.',
+          suggestedType: d.tipo || 'Desconhecido',
+          suggestedConfidence: d.confianca,
+          extractedFields: Object.entries(d.campos || {}).map(([key, value]) => ({ key, value: String(value) })),
+          personName: d.pessoa || 'Não identificado'
+        }))
+        setReviewPendingDocs(mappedReviewDocs)
+
+      } catch (err) {
+        console.error('Erro ao buscar dados:', err)
+        setError('Não foi possível carregar os dados do servidor.')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
 
   const toggleTheme = () => {
     setIsDark((prev) => !prev)
@@ -109,51 +199,71 @@ export function App() {
   }
 
   // Handle manual review approval
-  const handleApproveReviewDoc = (
+  const handleApproveReviewDoc = async (
     docId: string,
     finalCategoryName: string,
     personName: string
   ) => {
-    const docToApprove = reviewPendingDocs.find((d) => d.id === docId)
-    if (!docToApprove) return
+    try {
+      await apiService.submitReview(Number(docId), finalCategoryName, 'Revisor Humano')
+      
+      // Remove from pending queue
+      setReviewPendingDocs((prev) => prev.filter((d) => d.id !== docId))
 
-    // Remove from pending queue
-    setReviewPendingDocs((prev) => prev.filter((d) => d.id !== docId))
+      // Refresh data to show the new document in its category
+      const docsAgrupados = await apiService.getDocumentosAgrupados()
+      
+      // Update categories count and percentage
+      const mappedCategories: DocumentCategory[] = docsAgrupados.grupos.map((g: any) => {
+        const id = g.tipo || 'desconhecido'
+        const icons: Record<string, DocumentCategory['icon']> = {
+          cnh: 'car',
+          cpf: 'hash',
+          rg: 'idcard',
+          folha_ponto: 'file',
+          holerite: 'briefcase',
+          residencia: 'home',
+        }
 
-    // Find category id corresponding to the name
-    const targetCat =
-      categories.find((c) => c.name.toLowerCase() === finalCategoryName.toLowerCase()) ||
-      categories.find((c) => c.slug.toLowerCase() === finalCategoryName.toLowerCase()) ||
-      categories[0]
+        return {
+          id,
+          name: id.toUpperCase().replace('_', ' '),
+          slug: id,
+          count: g.total,
+          totalPercentage: 0,
+          icon: icons[id] || 'file'
+        }
+      })
 
-    // Create new detailed document
-    const newDoc: DetailedDocument = {
-      id: `doc-${Date.now()}`,
-      filename: docToApprove.filename,
-      category: targetCat.id,
-      personName: personName || docToApprove.personName || 'Sem nome informado',
-      pages: docToApprove.pages,
-      processedDate: 'Hoje',
-      confidence: 1.0,
-      metadata: {
-        registrationNumber: '09817263541',
-        categoryType: targetCat.id === 'cnh' ? 'B' : undefined,
-      },
-    }
-
-    setDetailedDocs((prev) => [newDoc, ...prev])
-
-    // Increment category count
-    setCategories((prev) => {
-      const next = prev.map((c) =>
-        c.id === targetCat.id ? { ...c, count: c.count + 1 } : c
-      )
-      const newTotal = next.reduce((sum, item) => sum + item.count, 0)
-      return next.map((c) => ({
-        ...c,
-        totalPercentage: newTotal > 0 ? Math.round((c.count / newTotal) * 100) : 0,
+      const totalDocs = mappedCategories.reduce((acc, cat) => acc + cat.count, 0)
+      const categoriesWithPercentage = mappedCategories.map(cat => ({
+        ...cat,
+        totalPercentage: totalDocs > 0 ? Math.round((cat.count / totalDocs) * 100) : 0
       }))
-    })
+      setCategories(categoriesWithPercentage)
+
+      // Update detailed documents
+      const allDocs: DetailedDocument[] = docsAgrupados.grupos.flatMap((g: any) => 
+        g.documentos.map((d: any) => ({
+          id: String(d.id),
+          filename: d.nome_arquivo,
+          category: d.tipo || 'desconhecido',
+          personName: d.pessoa || 'Não identificado',
+          pages: d.n_paginas,
+          processedDate: new Date(d.processado_em).toLocaleDateString('pt-BR'),
+          confidence: d.confianca,
+          metadata: {
+            registrationNumber: d.campos?.numero_registro || d.campos?.cpf || '',
+            categoryType: d.campos?.categoria || '',
+            expirationDate: d.campos?.data_vencimento || '',
+          }
+        }))
+      )
+      setDetailedDocs(allDocs)
+    } catch (err) {
+      console.error('Erro ao aprovar documento:', err)
+      alert('Erro ao processar a aprovação do documento.')
+    }
   }
 
   // Handle upload completion
@@ -195,38 +305,63 @@ export function App() {
 
       {/* Main Content Area */}
       <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 relative z-10">
-        {/* VIEW 1: CATEGORIA ESPECÍFICA (Ex: CNH) */}
-        {currentView === 'categoria' && selectedCategory && (
-          <CategoryPage
-            category={selectedCategory}
-            documents={categoryDocuments}
-            onBack={handleBackToHome}
-          />
-        )}
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-20 space-y-4">
+            <div className="w-12 h-12 border-4 border-[#9333ea] border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-[#6e6378] dark:text-[#a093a8] font-medium">Carregando dados do servidor...</p>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center py-20 space-y-4 text-center">
+            <div className="w-16 h-16 bg-red-100 dark:bg-red-950/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-[#2d0a33] dark:text-white">{error}</h3>
+            <button 
+              onClick={() => window.location.reload()}
+              className="px-6 py-2 bg-[#9333ea] text-white rounded-xl font-bold hover:bg-[#7e22ce] transition-colors"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* VIEW 1: CATEGORIA ESPECÍFICA (Ex: CNH) */}
+            {currentView === 'categoria' && selectedCategory && (
+              <CategoryPage
+                category={selectedCategory}
+                documents={categoryDocuments}
+                onBack={handleBackToHome}
+              />
+            )}
 
-        {/* VIEW 2: REVISÃO MANUAL */}
-        {currentView === 'revisao' && (
-          <ManualReviewPage
-            documents={reviewPendingDocs}
-            onBack={handleBackToHome}
-            onApprove={handleApproveReviewDoc}
-            availableCategories={categories.map((c) => c.name)}
-          />
-        )}
+            {/* VIEW 2: REVISÃO MANUAL */}
+            {currentView === 'revisao' && (
+              <ManualReviewPage
+                documents={reviewPendingDocs}
+                onBack={handleBackToHome}
+                onApprove={handleApproveReviewDoc}
+                availableCategories={categories.map((c) => c.name)}
+              />
+            )}
 
-        {/* VIEW 3: HOME PRINCIPAL (Pastas) */}
-        {currentView === 'home' && (
-          <HomePage
-            reviewCount={reviewCount}
-            onOpenReview={handleOpenReview}
-            classifiedCount={classifiedCount}
-            categorySearch={categorySearch}
-            onCategorySearchChange={setCategorySearch}
-            filterType={filterType}
-            onFilterChange={setFilterType}
-            filteredCategories={filteredCategories}
-            onOpenCategory={handleOpenCategory}
-          />
+            {/* VIEW 3: HOME PRINCIPAL (Pastas) */}
+            {currentView === 'home' && (
+              <HomePage
+                reviewCount={reviewCount}
+                onOpenReview={handleOpenReview}
+                classifiedCount={classifiedCount}
+                categorySearch={categorySearch}
+                onCategorySearchChange={setCategorySearch}
+                filterType={filterType}
+                onFilterChange={setFilterType}
+                filteredCategories={filteredCategories}
+                onOpenCategory={handleOpenCategory}
+                companies={companies}
+              />
+            )}
+          </>
         )}
       </main>
 
