@@ -45,3 +45,13 @@ CREATE TABLE pagina (
 CREATE INDEX pagina_documento_idx ON pagina (documento_id);
 CREATE INDEX pagina_texto_fts_idx ON pagina
     USING GIN (to_tsvector('portuguese', coalesce(texto, '')));
+
+-- Campos extraídos de cada documento (Goal 7). Um valor por (documento, campo); upsert.
+CREATE TABLE documento_campos (
+    documento_id    BIGINT NOT NULL REFERENCES documento(id) ON DELETE CASCADE,
+    campo           TEXT NOT NULL,
+    valor           TEXT NOT NULL,
+    origem          TEXT NOT NULL,                     -- quem gravou: modelo, humano, teste...
+    atualizado_em   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (documento_id, campo)
+);
