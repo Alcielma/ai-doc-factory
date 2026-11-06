@@ -1,32 +1,32 @@
-"""Score de conformidade: função pura, datas e valores fixos."""
+"""Score de conformidade da empresa: funções puras, datas e valores fixos."""
 from datetime import date
 
 import pytest
 
 from app import config, conformidade
-from app.conformidade import calcular, classificar_score, normalizar, score_inteiro
+from app.conformidade import (agrupar_empresas, calcular_empresa, classificar_score, identificar_empresa,
+                              normalizar, score_inteiro, validar_cnpj, validar_cpf)
 
 REF = date(2025, 6, 1)
+CNPJ_A, CNPJ_B = "11222333000181", "11444777000161"
+CPF1, CPF2 = "52998224725", "11144477735"
 OBRIG = ["aso", "contrato_trabalho", "holerite", "folha_pagamento", "folha_ponto"]
 
 
-def docs(tipos, estado="classificado"):
-    return [{"id": i, "tipo": t, "estado": estado} for i, t in enumerate(tipos, start=1)]
+def pessoa(cnpj=CNPJ_A, cpf=CPF1, nome="Maria da Silva", **extra):
+    return {"cnpj_prestadora": cnpj, "razao_social_prestadora": "Alfa Serviços Ltda", "distingue_prestadora": "true",
+            "nome": nome, "cpf": cpf, "matricula": "0042", "data_admissao": "2024-02-01",
+            "data_exame": "2025-03-01", "data_termino": "2026-01-01", "tipo_prazo": "determinado", **extra}
 
 
-def campos_ok(**extra):
-    """Campos coerentes para o lote completo (ids 1..5 na ordem de OBRIG)."""
-    base = {
-        1: {"data_exame": "2025-03-01", "nome": "Maria da Silva", "cpf": "123.456.789-09"},
-        2: {"data_termino": "2026-01-01", "nome": "Maria da Silva", "cpf": "12345678909",
-            "matricula": "0042", "data_admissao": "2024-02-01"},
-        3: {"nome": "Maria da Silva", "cpf": "123.456.789-09", "matricula": "0042", "data_admissao": "01/02/2024"},
-        4: {"nome": "Maria da Silva", "matricula": "0042"},
-        5: {"nome": "Maria da Silva", "matricula": "0042"},
-    }
-    for k, v in extra.items():
-        base[int(k[1:])] = {**base[int(k[1:])], **v}
-    return base
+def lote(tipos, campos_base, primeiro_id=1, lote_id=1, estado="classificado"):
+    docs = [{"id": primeiro_id + i, "lote_id": lote_id, "tipo": t, "estado": estado} for i, t in enumerate(tipos)]
+    return docs, {d["id"]: dict(campos_base) for d in docs}
+
+
+def avaliar(docs, campos, cnpj=CNPJ_A, ref=REF):
+    empresas, sem = agrupar_empresas(docs, campos)
+    return calcular_empresa(empresas[cnpj], campos, ref, sem)
 
 
 def fecha_em_100(r):
@@ -35,15 +35,47 @@ def fecha_em_100(r):
 
 
 def test_config_valida_contra_tipos():
-    assert set(conformidade.OBRIGATORIOS) <= set(config.TIPOS)
-    assert set(conformidade.VALIDADE) <= set(config.TIPOS)
+    assert set(conformidade.OBRIGATORIOS) <= set(config.TIPOS) and set(conformidade.VALIDADE) <= set(config.TIPOS)
     assert sum(conformidade.PESOS.values()) == 100
 
 
-def test_lote_completo_e_coerente():
-    r = calcular(docs(OBRIG), campos_ok(), REF)
-    assert (r["score"], r["classificacao"], r["descontos"]) == (100, "Regular", [])
-    assert r["data_referencia"] == "2025-06-01"
+def test_validacao_de_cnpj_e_cpf():
+    assert validar_cnpj("11.222.333/0001-81") == CNPJ_A and validar_cnpj(CNPJ_B) == CNPJ_B
+    assert validar_cnpj("11222333000182") is None and validar_cnpj("00000000000000") is None
+    assert validar_cnpj("123") is None and validar_cnpj(None) is None
+    assert validar_cpf("529.982.247-25") == CPF1 and validar_cpf("52998224726") is None
+    assert validar_cpf("11111111111") is None
+
+
+def test_identificacao_da_empresa():
+    assert identificar_empresa(pessoa()) == (CNPJ_A, None)
+    assert identificar_empresa(pessoa(cnpj="11.222.333/0001-81"))[0] == CNPJ_A
+    assert identificar_empresa(pessoa(cnpj=""))[0] is None
+    assert identificar_empresa(pessoa(cnpj="11222333000182")) == (None, "CNPJ da prestadora inválido")
+    assert identificar_empresa(pessoa(distingue_prestadora="false"))[0] is None
+
+
+def test_dois_cnpjs_ficam_separados_e_documento_sem_empresa_e_listado():
+    da, ca = lote(OBRIG, pessoa())
+    db, cb = lote(OBRIG, pessoa(cnpj=CNPJ_B, cpf=CPF2), primeiro_id=10)
+    dx, cx = lote(["holerite", "aso"], pessoa(cnpj="11222333000182"), primeiro_id=20)  # CNPJ inválido
+    dn, _ = lote(["holerite"], {}, primeiro_id=30, estado="em_revisao")
+    docs, campos = da + db + dx + dn, {**ca, **cb, **cx}
+    empresas, sem = agrupar_empresas(docs, campos)
+    assert {c: len(v) for c, v in empresas.items()} == {CNPJ_A: 5, CNPJ_B: 5}
+    assert {(s["id"], s["motivo"]) for s in sem if s["id"] in (20, 21)} == {
+        (20, "CNPJ da prestadora inválido"), (21, "CNPJ da prestadora inválido")}
+    assert [s["id"] for s in sem if s["id"] == 30] == [30] and "não analisado" in sem[-1]["motivo"]
+
+
+def test_empresa_completa_tem_100_nos_tres_niveis():
+    docs, campos = lote(OBRIG, pessoa())
+    r = avaliar(docs, campos)
+    assert (r["geral"]["score"], r["geral"]["classificacao"], r["geral"]["provisorio"]) == (100, "Regular", False)
+    assert r["razao_social"] == "Alfa Serviços Ltda" and r["data_referencia"] == "2025-06-01"
+    assert all(r["por_tipo"][t]["score"] == 100 for t in OBRIG)
+    assert all(v["score"] == 100 for v in r["por_documento"].values())
+    assert r["por_documento"][1]["criterios"]["completude"]["aplicavel"] is False
 
 
 @pytest.mark.parametrize("score,faixa", [(100, "Regular"), (85, "Regular"), (84, "Atenção"), (65, "Atenção"),
@@ -53,145 +85,130 @@ def test_limites_de_faixa(score, faixa):
 
 
 def test_arredondamento_antes_de_classificar():
-    assert score_inteiro(84.5) == 85 and classificar_score(score_inteiro(84.5)) == "Regular"
-    assert score_inteiro(84.49) == 84 and classificar_score(score_inteiro(84.49)) == "Atenção"
-    assert score_inteiro(64.5) == 65 and classificar_score(score_inteiro(64.5)) == "Atenção"
-    assert score_inteiro(64.4999) == 64 and classificar_score(score_inteiro(64.4999)) == "Crítico"
+    assert classificar_score(score_inteiro(84.5)) == "Regular" and classificar_score(score_inteiro(84.49)) == "Atenção"
+    assert classificar_score(score_inteiro(64.5)) == "Atenção" and classificar_score(score_inteiro(64.49)) == "Crítico"
 
 
-def test_obrigatorio_faltante_e_ausente_sem_desconhecido():
-    tipos = [t for t in OBRIG if t != "folha_ponto"]
-    r = calcular(docs(tipos), campos_ok(), REF)
-    assert r["criterios"]["completude"]["nota"] == 0.8
-    assert [(d["criterio"], d["tipo"], d["regra"]) for d in r["descontos"]] == [
-        ("completude", "folha_ponto", "obrigatorio_ausente")]
-    assert r["descontos"][0]["pontos"] == 8.0
-    assert (r["score"], r["classificacao"]) == (92, "Regular")
-    assert fecha_em_100(r)
+def test_obrigatorio_ausente_sem_documento_nao_identificado():
+    docs, campos = lote([t for t in OBRIG if t != "folha_ponto"], pessoa())
+    g = avaliar(docs, campos)["geral"]
+    assert [(d["criterio"], d["tipo"], d["regra"], d["pontos"]) for d in g["descontos"]] == [
+        ("completude", "folha_ponto", "obrigatorio_ausente", 8.0)]
+    assert (g["score"], g["classificacao"], g["provisorio"]) == (92, "Regular", False) and fecha_em_100(g)
 
 
-def test_obrigatorio_faltante_e_pendente_com_documento_desconhecido():
-    tipos = [t for t in OBRIG if t != "folha_ponto"]
-    d = docs(tipos) + [{"id": 9, "tipo": "desconhecido", "estado": "em_revisao"}]
-    r = calcular(d, campos_ok(), REF)
-    assert r["descontos"] == []
-    assert r["criterios"]["completude"]["nota"] == 1.0
-    assert r["score"] == 100 and r["provisorio"] is True
-    assert any(p["criterio"] == "completude" and p["tipo"] == "folha_ponto" for p in r["pendencias"])
-    assert any(p["documento"] == 9 for p in r["pendencias"])
+def test_obrigatorio_faltante_e_pendente_com_documento_nao_analisado_ou_sem_empresa():
+    docs, campos = lote([t for t in OBRIG if t != "folha_ponto"], pessoa())
+    nao, _ = lote(["desconhecido"], {}, primeiro_id=50, estado="em_revisao")
+    g = avaliar(docs + nao, campos)["geral"]
+    assert g["descontos"] == [] and g["score"] == 100 and g["provisorio"] is True
+    assert any(p["criterio"] == "completude" and p["tipo"] == "folha_ponto" for p in g["pendencias"])
+    # folha_ponto classificada, mas sem CNPJ válido: também pode ser a que falta
+    sem, csem = lote(["folha_ponto"], pessoa(cnpj=""), primeiro_id=60)
+    g = avaliar(docs + sem, {**campos, **csem})["geral"]
+    assert g["descontos"] == [] and g["provisorio"] is True
+    # em outro lote o documento sem empresa não interfere
+    outro, coutro = lote(["folha_ponto"], pessoa(cnpj=""), primeiro_id=70, lote_id=2)
+    assert [d["tipo"] for d in avaliar(docs + outro, {**campos, **coutro})["geral"]["descontos"]] == ["folha_ponto"]
 
 
-@pytest.mark.parametrize("estado,tipo", [("segmentado", None), ("em_revisao", "holerite"), ("erro", None),
-                                         ("classificado", "desconhecido")])
-def test_documento_nao_analisado_nao_zera_a_nota(estado, tipo):
-    d = docs(OBRIG) + [{"id": 9, "tipo": tipo, "estado": estado}]
-    r = calcular(d, campos_ok(), REF)
-    assert r["score"] == 100 and r["provisorio"] is True
-    assert [p for p in r["pendencias"] if p["documento"] == 9]
-
-
-def test_redistribuicao_de_pesos_sem_extracao():
-    r = calcular(docs(OBRIG), {}, REF)
-    c = r["criterios"]
-    assert c["validade"]["pendente"] and c["consistencia"]["pendente"]
-    assert c["completude"]["peso_efetivo"] == 100.0 and c["validade"]["peso_efetivo"] is None
-    assert r["score"] == 100 and r["provisorio"] is True
-
-
-def test_redistribuicao_parcial():
-    # sem campos de consistência: validade e completude dividem 100 (40/75 e 35/75)
-    campos = {1: {"data_exame": "2025-03-01"}, 2: {"data_termino": "2026-01-01"}}
-    r = calcular(docs(OBRIG), campos, REF)
-    assert r["criterios"]["consistencia"]["pendente"]
-    assert r["criterios"]["completude"]["peso_efetivo"] == pytest.approx(53.3333, abs=1e-4)
-    assert r["criterios"]["validade"]["peso_efetivo"] == pytest.approx(46.6667, abs=1e-4)
-
-
-def test_aso_vencido():
-    r = calcular(docs(OBRIG), campos_ok(d1={"data_exame": "2024-03-01"}), REF)  # vence 2025-03-01
-    assert r["criterios"]["validade"]["nota"] == 0.5
-    d = r["descontos"]
+def test_aso_vencido_nos_tres_niveis():
+    docs, campos = lote(OBRIG, pessoa())
+    campos[1]["data_exame"] = "2024-03-01"  # vence 2025-03-01
+    r = avaliar(docs, campos)
+    d = r["geral"]["descontos"]
     assert len(d) == 1 and (d[0]["criterio"], d[0]["tipo"], d[0]["documento"], d[0]["regra"]) == (
-        "validade", "aso", 1, "documento_vencido")
-    assert "2025-03-01" in d[0]["detalhe"]
-    assert d[0]["pontos"] == 17.5  # 35 / 2 itens
-    assert r["score"] == 83 and r["classificacao"] == "Atenção"  # 82,5 sobe para 83
-    assert fecha_em_100(r)
+        "validade", "aso", 1, "documento_vencido") and "2025-03-01" in d[0]["detalhe"]
+    assert d[0]["pontos"] == 17.5 and r["geral"]["score"] == 83 and fecha_em_100(r["geral"])
+    assert r["por_tipo"]["aso"]["criterios"]["validade"]["nota"] == 0.0
+    assert r["por_documento"][1]["criterios"]["validade"]["nota"] == 0.0
+    assert r["por_documento"][1]["score"] < 100 and r["por_tipo"]["holerite"]["score"] == 100
+    assert r["por_documento"][3]["criterios"]["validade"]["aplicavel"] is False  # holerite
 
 
-def test_vencer_hoje_ainda_e_valido_e_no_dia_seguinte_vence():
-    hoje = calcular(docs(OBRIG), campos_ok(d1={"data_exame": "2024-06-01"}), REF)  # vence em 2025-06-01
-    assert hoje["descontos"] == []
-    amanha = calcular(docs(OBRIG), campos_ok(d1={"data_exame": "2024-06-01"}), date(2025, 6, 2))
-    assert [d["regra"] for d in amanha["descontos"]] == ["documento_vencido"]
+def test_vencer_hoje_ainda_vale():
+    docs, campos = lote(OBRIG, pessoa())
+    campos[1]["data_exame"] = "2024-06-01"  # vence em 2025-06-01
+    assert avaliar(docs, campos)["geral"]["descontos"] == []
+    amanha = avaliar(docs, campos, ref=date(2025, 6, 2))["geral"]["descontos"]
+    assert [x["regra"] for x in amanha] == ["documento_vencido"]
 
 
-def test_contrato_vencido_pelo_termino():
-    r = calcular(docs(OBRIG), campos_ok(d2={"data_termino": "31/05/2025"}), REF)
-    assert [(d["tipo"], d["regra"]) for d in r["descontos"]] == [("contrato_trabalho", "documento_vencido")]
+def test_contrato_indeterminado_nao_se_aplica():
+    docs, campos = lote(OBRIG, pessoa())
+    campos[2].update(tipo_prazo="indeterminado", data_termino="")
+    r = avaliar(docs, campos)
+    assert r["geral"]["criterios"]["validade"]["bons"] == 1 and r["geral"]["pendencias"] == []
+    c = r["por_documento"][2]["criterios"]["validade"]
+    assert c["aplicavel"] is False
+    assert c["pendente"] is False and c["nota"] is None
+    assert not any(p["criterio"] == "validade" for p in r["geral"]["pendencias"])
+    # determinado sem data fica pendente (não zera)
+    campos[2].update(tipo_prazo="determinado")
+    r = avaliar(docs, campos)
+    assert any(p["criterio"] == "validade" and p["documento"] == 2 for p in r["geral"]["pendencias"])
+    assert r["geral"]["descontos"] == [] and r["geral"]["provisorio"] is False  # campo ausente não é provisório
 
 
-def test_documento_sem_data_fica_pendente_e_nao_desconta():
-    c = campos_ok()
-    del c[1]["data_exame"]
-    c[2]["data_termino"] = "sem leitura"
-    r = calcular(docs(OBRIG), c, REF)
-    assert r["criterios"]["validade"]["pendente"] is True
-    assert r["descontos"] == [] and r["provisorio"] is True
-    assert {p["documento"] for p in r["pendencias"] if p["criterio"] == "validade" and p["documento"]} == {1, 2}
+def test_cpfs_diferentes_nao_divergem_e_mesmo_cpf_com_nome_divergente_sim():
+    da, ca = lote(OBRIG, pessoa())
+    db, cb = lote(["holerite", "aso"], pessoa(cpf=CPF2, nome="João Pereira", matricula="77"), primeiro_id=10)
+    docs, campos = da + db, {**ca, **cb}
+    assert avaliar(docs, campos)["geral"]["descontos"] == []  # pessoas diferentes: nada a comparar entre elas
+    campos[3]["nome"] = "Mario da Silva"  # holerite da Maria, mesmo CPF
+    g = avaliar(docs, campos)["geral"]
+    nome = [d for d in g["descontos"] if d["campo"] == "nome"]
+    assert len(nome) == 1 and nome[0]["cpf"] == CPF1 and nome[0]["conferir"] is True
+    assert {"documento": 3, "tipo": "holerite", "valor": "Mario da Silva"} in nome[0]["valores"]
+    assert {v["documento"] for v in nome[0]["valores"]} <= {1, 2, 3, 5}  # nunca documentos de outro CPF
+    assert fecha_em_100(g) and g["score"] < 100
 
 
-def test_nome_divergente():
-    r = calcular(docs(OBRIG), campos_ok(d3={"nome": "Mario da Silva"}), REF)
-    d = r["descontos"]
-    assert len(d) == 1 and (d[0]["criterio"], d[0]["regra"], d[0]["campo"], d[0]["conferir"]) == (
-        "consistencia", "campo_divergente", "nome", True)
-    assert {"documento": 3, "tipo": "holerite", "valor": "Mario da Silva"} in d[0]["valores"]
-    assert len(d[0]["valores"]) == 5
-    assert r["criterios"]["consistencia"]["nota"] == 0.75  # 3 de 4 campos coerentes
-    assert d[0]["pontos"] == 6.25 and r["score"] == 94
-    assert fecha_em_100(r)
+def test_razao_social_divergente_na_empresa():
+    docs, campos = lote(OBRIG, pessoa())
+    campos[4]["razao_social_prestadora"] = "Beta Comércio SA"
+    g = avaliar(docs, campos)["geral"]
+    assert [(d["criterio"], d["campo"]) for d in g["descontos"]] == [("consistencia", "razao_social_prestadora")]
 
 
-def test_nome_com_acento_caixa_e_espaco_nao_diverge():
-    r = calcular(docs(OBRIG), campos_ok(d3={"nome": "  MARIA   da  silva. "}, d4={"nome": "María da Silva"}), REF)
-    assert r["descontos"] == []
-
-
-def test_cpf_com_e_sem_pontuacao_sao_iguais():
-    assert normalizar("cpf", "123.456.789-09") == normalizar("cpf", "12345678909")
-    assert calcular(docs(OBRIG), campos_ok(), REF)["descontos"] == []  # ids 1,3 com pontos; 2 sem
-    r = calcular(docs(OBRIG), campos_ok(d3={"cpf": "123.456.789-10"}), REF)
-    assert [d["campo"] for d in r["descontos"]] == ["cpf"]
-
-
-def test_data_admissao_em_formatos_diferentes_e_igual():
+def test_normalizacao_nome_e_cpf_formatado():
+    docs, campos = lote(OBRIG, pessoa())
+    campos[3]["nome"] = "  MARÍA   da silva. "
+    campos[1]["cpf"] = "529.982.247-25"
+    assert avaliar(docs, campos)["geral"]["descontos"] == []
     assert normalizar("data_admissao", "01/02/2024") == normalizar("data_admissao", "2024-02-01")
 
 
-def test_valor_ausente_nao_e_divergencia_e_vira_pendencia():
-    c = campos_ok()
-    del c[3]["nome"]
-    r = calcular(docs(OBRIG), c, REF)
-    assert r["descontos"] == []
+def test_cpf_ausente_ou_invalido_tira_o_documento_da_comparacao_com_pendencia():
+    docs, campos = lote(OBRIG, pessoa())
+    campos[3]["cpf"] = "52998224726"
+    campos[3]["nome"] = "Outra Pessoa"  # sem CPF válido não é comparado com ninguém
+    g = avaliar(docs, campos)["geral"]
+    assert g["descontos"] == [] and g["provisorio"] is False
     assert {"criterio": "consistencia", "documento": 3, "tipo": "holerite",
-            "motivo": "campo 'nome' ausente"} in r["pendencias"]
-    assert r["provisorio"] is True
+            "motivo": "campo 'cpf' inválido"} in g["pendencias"]
 
 
-def test_sem_documentos_analisados_nao_ha_score():
-    r = calcular(docs(["holerite"], estado="segmentado"), {}, REF)
-    assert (r["score"], r["classificacao"], r["score_bruto"]) == (None, None, None)
-    assert r["provisorio"] is True and r["descontos"] == []
-    assert all(c["pendente"] for c in r["criterios"].values())
-    assert calcular([], {}, REF)["score"] is None
+def test_sem_extracao_criterios_pendentes_e_peso_redistribuido():
+    docs, campos = lote(OBRIG, pessoa(data_exame="", data_termino="", nome="", cpf="", matricula="",
+                                      data_admissao="", razao_social_prestadora=""))
+    g = avaliar(docs, campos)["geral"]
+    assert g["criterios"]["validade"]["pendente"] and g["criterios"]["consistencia"]["pendente"]
+    assert g["criterios"]["completude"]["peso_efetivo"] == 100.0
+    assert g["score"] == 100 and g["provisorio"] is True  # critério inteiro pendente
+
+
+def test_documento_nao_analisado_nao_zera_a_nota():
+    docs, campos = lote(OBRIG, pessoa())
+    for estado, tipo in [("segmentado", None), ("em_revisao", "holerite"), ("erro", None), ("classificado", "desconhecido")]:
+        extra, _ = lote([tipo], {}, primeiro_id=99, estado=estado)
+        g = avaliar(docs + extra, campos)["geral"]
+        assert g["score"] == 100 and g["provisorio"] is True and any(p["documento"] == 99 for p in g["pendencias"])
 
 
 def test_soma_dos_descontos_fecha_em_100_com_varios_descontos():
-    tipos = ["aso", "holerite", "folha_ponto"]  # faltam contrato e folha_pagamento
-    c = {1: {"data_exame": "2020-01-01", "nome": "A B", "cpf": "1"},
-         2: {"nome": "A C", "cpf": "2", "matricula": "7", "data_admissao": "2024-01-01"},
-         3: {"nome": "A D", "matricula": "8"}}
-    r = calcular(docs(tipos), c, REF)
-    assert len(r["descontos"]) == 2 + 1 + 3  # 2 ausentes, 1 vencido, nome+cpf+matricula divergentes
-    assert fecha_em_100(r)
+    docs, campos = lote(["aso", "holerite", "folha_ponto"], pessoa(data_exame="2020-01-01"))
+    campos[2]["nome"], campos[3]["matricula"] = "Ana Souza", "9"
+    g = avaliar(docs, campos)["geral"]
+    assert len(g["descontos"]) == 2 + 1 + 2  # 2 ausentes, 1 vencido, nome e matrícula
+    assert fecha_em_100(g)
