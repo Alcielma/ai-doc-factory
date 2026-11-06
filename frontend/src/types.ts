@@ -21,12 +21,17 @@ export interface Company {
 
 export interface DetailedDocument {
   id: string
+  loteId?: number
   filename: string
   category: string
+  estado?: string
   personName: string
   pages: number
+  startPage?: number
   processedDate: string
+  processedTimestamp?: number
   confidence: number
+  campos?: Record<string, string>
   metadata: {
     registrationNumber?: string
     categoryType?: string
@@ -34,6 +39,10 @@ export interface DetailedDocument {
     cpfNumber?: string
     rgNumber?: string
     address?: string
+    admissionDate?: string
+    examDate?: string
+    companyName?: string
+    companyCnpj?: string
   }
 }
 
@@ -50,8 +59,10 @@ export interface ReviewPendingDocument {
   startPage: number
   issueDescription: string
   suggestedType: string
+  suggestedTypeLabel?: string
   suggestedConfidence: number
   extractedFields: { key: string; value: string }[]
+  initialCampos?: Record<string, string>
   personName: string
 }
 

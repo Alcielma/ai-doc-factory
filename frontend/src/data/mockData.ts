@@ -175,12 +175,14 @@ export const INITIAL_DETAILED_DOCUMENTS: DetailedDocument[] = [
 export const INITIAL_REVIEW_PENDING_DOCUMENTS: ReviewPendingDocument[] = [
   {
     id: 'rev-01',
+    loteId: 1,
     filename: 'scan_0045.jpg',
     issueType: 'baixa_qualidade',
     issueLabel: 'Baixa qualidade da imagem',
     timeAgo: 'Há 8 dias',
     processedDate: '28/10/2026',
     pages: 1,
+    startPage: 1,
     issueDescription:
       'Baixa qualidade da imagem: Imagem com baixa resolução e reflexo sobre o número do documento.',
     suggestedType: 'RG',
@@ -190,12 +192,14 @@ export const INITIAL_REVIEW_PENDING_DOCUMENTS: ReviewPendingDocument[] = [
   },
   {
     id: 'rev-02',
+    loteId: 1,
     filename: 'documento_sem_nome.pdf',
     issueType: 'conteudo_ilegivel',
     issueLabel: 'Conteúdo ilegível',
     timeAgo: 'Há 3 dias',
     processedDate: '02/11/2026',
     pages: 2,
+    startPage: 1,
     issueDescription:
       'Conteúdo ilegível: Documento escaneado com sombras excessivas nas bordas e dobra no cabeçalho.',
     suggestedType: 'CPF',
@@ -205,12 +209,14 @@ export const INITIAL_REVIEW_PENDING_DOCUMENTS: ReviewPendingDocument[] = [
   },
   {
     id: 'rev-03',
+    loteId: 1,
     filename: 'img_2231.png',
     issueType: 'confiança_baixa',
     issueLabel: 'Confiança baixa',
     timeAgo: 'Hoje',
     processedDate: '05/11/2026',
     pages: 1,
+    startPage: 1,
     issueDescription:
       'Confiança baixa: Layout atípico e texto com baixa aderência aos modelos cadastrados.',
     suggestedType: 'Comprovante de residência',

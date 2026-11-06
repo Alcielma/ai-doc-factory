@@ -9,6 +9,7 @@ interface HomePageProps {
   reviewCount: number
   onOpenReview: () => void
   classifiedCount: number
+  accuracyPercentage: number
   categorySearch: string
   onCategorySearchChange: (value: string) => void
   filterType: FilterType
@@ -22,6 +23,7 @@ const HomePage: React.FC<HomePageProps> = ({
   reviewCount,
   onOpenReview,
   classifiedCount,
+  accuracyPercentage,
   categorySearch,
   onCategorySearchChange,
   filterType,
@@ -56,7 +58,7 @@ const HomePage: React.FC<HomePageProps> = ({
       <section>
         <MetricsCard
           classifiedCount={classifiedCount}
-          accuracyPercentage={75}
+          accuracyPercentage={accuracyPercentage}
           reviewCount={reviewCount}
         />
       </section>

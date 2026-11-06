@@ -3,18 +3,39 @@ import { Check, X, Plus } from 'lucide-react'
 import type { ReviewPendingDocument } from '../types'
 import { fetchPageImage } from '../services/api'
 
+export interface CategoryOption {
+  slug: string
+  name: string
+}
+
 interface ManualReviewPageProps {
   documents: ReviewPendingDocument[]
   onBack: () => void
-  onApprove: (docId: string, finalCategory: string, personName: string) => void
-  availableCategories: string[]
+  onApprove: (
+    docId: string,
+    finalCategorySlug: string,
+    personName: string,
+    updatedFields?: { key: string; value: string }[],
+    initialCampos?: Record<string, string>
+  ) => void
+  availableCategories: CategoryOption[]
 }
 
 interface DetailPanelProps {
   doc: ReviewPendingDocument
-  availableCategories: string[]
-  onConfirm: (docId: string, category: string, name: string) => void
-  onAcceptSuggestion: (doc: ReviewPendingDocument) => void
+  availableCategories: CategoryOption[]
+  onConfirm: (
+    docId: string,
+    categorySlug: string,
+    name: string,
+    updatedFields: { key: string; value: string }[],
+    initialCampos?: Record<string, string>
+  ) => void
+  onAcceptSuggestion: (
+    doc: ReviewPendingDocument,
+    personName: string,
+    updatedFields: { key: string; value: string }[]
+  ) => void
 }
 
 const ReviewDetailPanel: React.FC<DetailPanelProps> = ({
@@ -23,7 +44,14 @@ const ReviewDetailPanel: React.FC<DetailPanelProps> = ({
   onConfirm,
   onAcceptSuggestion,
 }) => {
-  const [selectedCategory, setSelectedCategory] = useState(doc.suggestedType)
+  const isValidSuggestion = availableCategories.some(
+    (c) => c.slug === doc.suggestedType
+  )
+  const [selectedCategory, setSelectedCategory] = useState(
+    isValidSuggestion
+      ? doc.suggestedType
+      : availableCategories[0]?.slug || doc.suggestedType
+  )
   const [personName, setPersonName] = useState(doc.personName)
   const [extractedFields, setExtractedFields] = useState(doc.extractedFields)
   const [currentPage, setCurrentPage] = useState(0)
@@ -33,7 +61,7 @@ const ReviewDetailPanel: React.FC<DetailPanelProps> = ({
   }
 
   const handleAddField = () => {
-    setExtractedFields((prev) => [...prev, { key: 'Campo', value: '' }])
+    setExtractedFields((prev) => [...prev, { key: 'novo_campo', value: '' }])
   }
 
   // <img src> não envia Authorization: baixa a imagem autenticada e usa um object URL (revogado ao trocar/desmontar)
@@ -58,6 +86,11 @@ const ReviewDetailPanel: React.FC<DetailPanelProps> = ({
     }
   }, [doc.loteId, doc.startPage, currentPage])
 
+  const suggestedLabel =
+    doc.suggestedTypeLabel ||
+    availableCategories.find((c) => c.slug === doc.suggestedType)?.name ||
+    doc.suggestedType
+
   return (
     <div className="lg:col-span-7 space-y-6">
       <div className="rounded-2xl p-6 sm:p-7 border border-[#ebe5ef] dark:border-[#2f1e39] bg-white dark:bg-[#1a1120] shadow-xs space-y-6">
@@ -73,7 +106,7 @@ const ReviewDetailPanel: React.FC<DetailPanelProps> = ({
           </div>
         </div>
 
-        {/* Visualizer Mock (Simulando o formato físico solicitado pelo usuário) */}
+        {/* Visualizer (Imagem real da página no backend) */}
         <div className="relative aspect-[3/4] w-full bg-[#f3f0f5] dark:bg-[#150c18] rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] overflow-hidden group shadow-inner">
           {imageUrl ? (
             <img
@@ -86,19 +119,23 @@ const ReviewDetailPanel: React.FC<DetailPanelProps> = ({
               {imageFailed ? 'Imagem indisponível' : 'Carregando imagem...'}
             </div>
           )}
-          
+
           {doc.pages > 1 && (
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/50 backdrop-blur-md text-white text-[10px] font-bold">
-              <button 
-                onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))}
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(0, prev - 1))}
                 disabled={currentPage === 0}
                 className="hover:text-[#d67bf3] disabled:opacity-30 transition-colors"
               >
                 Anterior
               </button>
-              <span>Página {currentPage + 1} de {doc.pages}</span>
-              <button 
-                onClick={() => setCurrentPage(prev => Math.min(doc.pages - 1, prev + 1))}
+              <span>
+                Página {currentPage + 1} de {doc.pages}
+              </span>
+              <button
+                onClick={() =>
+                  setCurrentPage((prev) => Math.min(doc.pages - 1, prev + 1))
+                }
                 disabled={currentPage === doc.pages - 1}
                 className="hover:text-[#d67bf3] disabled:opacity-30 transition-colors"
               >
@@ -108,13 +145,17 @@ const ReviewDetailPanel: React.FC<DetailPanelProps> = ({
           )}
         </div>
 
-        {/* Alert / Diagnosis Box (sem tom amarelo/marrom) */}
+        {/* Alert / Diagnosis Box */}
         <div className="p-4 rounded-xl bg-[#f8f5fa] dark:bg-[#201326] border border-[#ece4f1] dark:border-[#382240] text-xs sm:text-sm space-y-1">
           <p className="font-semibold text-[#2d0a33] dark:text-[#f8f5fc]">
             {doc.issueDescription}
           </p>
           <p className="text-[#6e6378] dark:text-[#a093a8]">
-            Tipo sugerido pela IA: <strong className="font-bold text-[#9333ea] dark:text-[#d67bf3]">{doc.suggestedType}</strong> · confiança {Math.round(doc.suggestedConfidence * 100)}%
+            Tipo sugerido pela IA:{' '}
+            <strong className="font-bold text-[#9333ea] dark:text-[#d67bf3]">
+              {suggestedLabel}
+            </strong>{' '}
+            · confiança {Math.round(doc.suggestedConfidence * 100)}%
           </p>
         </div>
 
@@ -130,9 +171,18 @@ const ReviewDetailPanel: React.FC<DetailPanelProps> = ({
                 key={idx}
                 className="flex items-center rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] overflow-hidden bg-white dark:bg-[#150c18]"
               >
-                <div className="px-3.5 py-2 bg-[#f8f5fa] dark:bg-[#201224] border-r border-[#ebe5ef] dark:border-[#2f1e39] text-xs font-semibold text-[#6e6378] dark:text-[#a093a8] min-w-[70px]">
-                  {field.key}
-                </div>
+                <input
+                  type="text"
+                  value={field.key}
+                  onChange={(e) => {
+                    const keyVal = e.target.value
+                    setExtractedFields((prev) =>
+                      prev.map((f, i) => (i === idx ? { ...f, key: keyVal } : f))
+                    )
+                  }}
+                  aria-label="Nome do campo"
+                  className="px-3.5 py-2 bg-[#f8f5fa] dark:bg-[#201224] border-r border-[#ebe5ef] dark:border-[#2f1e39] text-xs font-semibold text-[#6e6378] dark:text-[#a093a8] w-32 focus:outline-none"
+                />
                 <input
                   type="text"
                   value={field.value}
@@ -180,8 +230,8 @@ const ReviewDetailPanel: React.FC<DetailPanelProps> = ({
               className="w-full px-3.5 py-2.5 rounded-xl border border-[#ebe5ef] dark:border-[#2f1e39] bg-white dark:bg-[#150c18] text-[#2d0a33] dark:text-white text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#9333ea] cursor-pointer"
             >
               {availableCategories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
+                <option key={cat.slug} value={cat.slug}>
+                  {cat.name}
                 </option>
               ))}
             </select>
@@ -201,24 +251,36 @@ const ReviewDetailPanel: React.FC<DetailPanelProps> = ({
           </div>
         </div>
 
-        {/* Action Buttons (sem favicon ou logo) */}
+        {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-3 pt-3">
           <button
             type="button"
-            onClick={() => onConfirm(doc.id, selectedCategory, personName)}
+            onClick={() =>
+              onConfirm(
+                doc.id,
+                selectedCategory,
+                personName,
+                extractedFields,
+                doc.initialCampos
+              )
+            }
             className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-white bg-[#3e0b48] hover:bg-[#52105e] dark:bg-[#9917a2] dark:hover:bg-[#b01ebb] flex items-center gap-2 shadow-2xs transition-all cursor-pointer"
           >
             <Check className="w-4 h-4 stroke-[2.5]" />
             <span>Confirmar classificação</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => onAcceptSuggestion(doc)}
-            className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-[#d88cf5] dark:border-[#c026d3] text-[#7c1782] dark:text-[#f38df9] hover:bg-[#f6ebfa] dark:hover:bg-[#281530] flex items-center gap-2 transition-all cursor-pointer"
-          >
-            <span>Aceitar sugestão ({doc.suggestedType})</span>
-          </button>
+          {isValidSuggestion && (
+            <button
+              type="button"
+              onClick={() =>
+                onAcceptSuggestion(doc, personName, extractedFields)
+              }
+              className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-[#d88cf5] dark:border-[#c026d3] text-[#7c1782] dark:text-[#f38df9] hover:bg-[#f6ebfa] dark:hover:bg-[#281530] flex items-center gap-2 transition-all cursor-pointer"
+            >
+              <span>Aceitar sugestão ({suggestedLabel})</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -231,26 +293,52 @@ const ManualReviewPage: React.FC<ManualReviewPageProps> = ({
   onApprove,
   availableCategories,
 }) => {
-  const [selectedDocId, setSelectedDocId] = useState<string>(documents[0]?.id || '')
-  const [selectedCheckboxes, setSelectedCheckboxes] = useState<Record<string, boolean>>({})
+  const [selectedDocId, setSelectedDocId] = useState<string>(
+    documents[0]?.id || ''
+  )
+  const [selectedCheckboxes, setSelectedCheckboxes] = useState<
+    Record<string, boolean>
+  >({})
   const [bulkCategory, setBulkCategory] = useState<string>('')
 
   // Selected document
   const currentDoc =
     documents.find((d) => d.id === selectedDocId) || documents[0]
 
-  const handleAcceptSuggestion = useCallback((doc: ReviewPendingDocument) => {
-    onApprove(doc.id, doc.suggestedType, doc.personName)
-    const remaining = documents.filter((d) => d.id !== doc.id)
-    if (remaining.length > 0) {
-      setSelectedDocId(remaining[0].id)
-    }
-  }, [documents, onApprove])
+  const handleAcceptSuggestion = useCallback(
+    (
+      doc: ReviewPendingDocument,
+      personName?: string,
+      updatedFields?: { key: string; value: string }[]
+    ) => {
+      const targetSlug = availableCategories.some(
+        (c) => c.slug === doc.suggestedType
+      )
+        ? doc.suggestedType
+        : availableCategories[0]?.slug || doc.suggestedType
+      onApprove(
+        doc.id,
+        targetSlug,
+        personName ?? doc.personName,
+        updatedFields ?? doc.extractedFields,
+        doc.initialCampos
+      )
+      const remaining = documents.filter((d) => d.id !== doc.id)
+      if (remaining.length > 0) {
+        setSelectedDocId(remaining[0].id)
+      }
+    },
+    [availableCategories, documents, onApprove]
+  )
 
   // Keyboard navigation & shortcuts (↑ / ↓ to navigate, 'A' to accept suggestion)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
+      if (
+        ['INPUT', 'SELECT', 'TEXTAREA'].includes(
+          (e.target as HTMLElement)?.tagName
+        )
+      ) {
         return
       }
 
@@ -293,10 +381,12 @@ const ManualReviewPage: React.FC<ManualReviewPageProps> = ({
 
   const handleConfirmClassification = (
     docId: string,
-    category: string,
-    name: string
+    categorySlug: string,
+    name: string,
+    updatedFields: { key: string; value: string }[],
+    initialCampos?: Record<string, string>
   ) => {
-    onApprove(docId, category, name)
+    onApprove(docId, categorySlug, name, updatedFields, initialCampos)
     const remaining = documents.filter((d) => d.id !== docId)
     if (remaining.length > 0) {
       setSelectedDocId(remaining[0].id)
@@ -306,11 +396,19 @@ const ManualReviewPage: React.FC<ManualReviewPageProps> = ({
   // Handle bulk action approval
   const handleApplyBulk = () => {
     if (!bulkCategory) return
-    const idsToProcess = Object.keys(selectedCheckboxes).filter((id) => selectedCheckboxes[id])
+    const idsToProcess = Object.keys(selectedCheckboxes).filter(
+      (id) => selectedCheckboxes[id]
+    )
     idsToProcess.forEach((id) => {
       const doc = documents.find((d) => d.id === id)
       if (doc) {
-        onApprove(doc.id, bulkCategory, doc.personName)
+        onApprove(
+          doc.id,
+          bulkCategory,
+          doc.personName,
+          doc.extractedFields,
+          doc.initialCampos
+        )
       }
     })
     setSelectedCheckboxes({})
@@ -383,8 +481,8 @@ const ManualReviewPage: React.FC<ManualReviewPageProps> = ({
                   >
                     <option value="">Classificar como...</option>
                     {availableCategories.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
+                      <option key={cat.slug} value={cat.slug}>
+                        {cat.name}
                       </option>
                     ))}
                   </select>
