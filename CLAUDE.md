@@ -80,7 +80,7 @@ Os dados sintéticos são otimistas. O README deve registrar que a validação e
 3. Goal 3 com um classificador simples para fechar o fluxo, depois trocar por Jev + Gemini.
 4. Goal 5 (roteamento e revisão) e script de avaliação com números reais.
 5. Goal 6 (análise de risco das folhas de ponto).
-6. Goal 2 (refinamentos de agrupamento/correção) e UI Streamlit.
+6. Goal 2 (refinamentos de agrupamento/correção). **Por enquanto, só backend:** não implemente a UI Streamlit nem o serviço `ui` até nova decisão.
 7. README com como rodar, arquitetura, resultados medidos e limitações.
 
 ## Goals
