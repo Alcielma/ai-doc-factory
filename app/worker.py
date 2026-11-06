@@ -5,6 +5,7 @@ import sys
 import redis
 
 from app import config
+from app.analise import analisar_documento, marcar_erro_analise
 from app.filas import rodar_worker
 from app.classificar import classificar_documento, marcar_erro
 from app.ocr import processar_lote
@@ -13,9 +14,10 @@ from app.ocr import processar_lote
 HANDLERS = {
     config.FILA_SEGMENTAR: processar_lote,
     config.FILA_CLASSIFICAR: classificar_documento,
+    config.FILA_ANALISAR: analisar_documento,
 }
 
-AO_ESGOTAR = {config.FILA_CLASSIFICAR: marcar_erro}
+AO_ESGOTAR = {config.FILA_CLASSIFICAR: marcar_erro, config.FILA_ANALISAR: marcar_erro_analise}
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
