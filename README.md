@@ -43,7 +43,7 @@ POST /lotes (PDF/imagem)
               fan-in: lote.docs_pendentes = 0 => lote concluido
 ```
 
-**Segmentação em cascata** (`app/segmentacao.py`): página em branco herda o documento anterior; "Página 1 de N" abre documento e "Página k de N" (k>1) continua; senão, similaridade TF-IDF entre páginas consecutivas (abaixo de `SEG_SIM_BAIXO` abre, a partir de `SEG_SIM_ALTO` continua); na faixa ambígua pergunta Sim/Não ao Jev (só com `CLASSIFICADOR=jev`). Se o Jev não responde ou fica no meio, o sistema abre documento novo e marca `segmentacao_ambigua`, o que leva o documento à revisão. Os limiares ainda não foram calibrados.
+**Segmentação em cascata** (`app/segmentacao.py`): página em branco herda o documento anterior; "Página 1 de N" abre documento e "Página k de N" (k>1) continua; senão, sem paginação, dois CNPJs válidos (dígitos verificadores) e diferentes abrem documento mesmo com similaridade alta (sem perguntar ao Jev; se algum CNPJ é inválido, provável erro de OCR, não corta); depois, similaridade TF-IDF entre páginas consecutivas (abaixo de `SEG_SIM_BAIXO` abre, a partir de `SEG_SIM_ALTO` continua; CNPJs diferentes abaixo de `SEG_SIM_ALTO` abrem); na faixa ambígua pergunta Sim/Não ao Jev (só com `CLASSIFICADOR=jev`). Se o Jev não responde ou fica no meio, o sistema abre documento novo e marca `segmentacao_ambigua`, o que leva o documento à revisão. Os limiares ainda não foram calibrados.
 
 **Roteamento** (`app/roteamento.py`): confiança >= `CONF_AUTO` e sem desacordo entre modelos vira `classificado`; entre `CONF_MIN` e `CONF_AUTO`, ou com desacordo, ou segmentação ambígua, vira `em_revisao` com o tipo sugerido; abaixo de `CONF_MIN`, `em_revisao` com tipo `desconhecido`.
 
@@ -322,6 +322,8 @@ Métricas por documento. Precisão e recall são das fronteiras (início de docu
 | Documentos exatos | 26/30 (0,867) | 60/76 (0,789) |
 
 No teste, os lotes L0001 (2/4 exatos), L0006 (5/10) e L0008 (4/11) concentram os erros; os outros sete lotes têm 4/5 ou mais. O mesmo `L0001` de 4 documentos reais virou 7 previstos.
+
+**Mudança posterior à medição final.** Depois da medição final, a regra do CNPJ na segmentação mudou: sem paginação, dois CNPJs válidos pelos dígitos verificadores e diferentes abrem documento mesmo com similaridade alta (antes a similaridade alta decidia "continua" antes de olhar o CNPJ). Os números do conjunto de teste acima valem para a versão anterior e precisam ser medidos de novo em lotes novos. No conjunto de **ajuste** (não é métrica final), a mesma medição foi repetida com a regra nova: antes, 30 reais / 31 previstos, precisão 0,923, recall 0,960, exatos 26/30; depois, 30 reais / 32 previstos, precisão 0,926, recall 1,000, exatos 28/30.
 
 ### Classificação (Goal 3), conjunto de teste
 

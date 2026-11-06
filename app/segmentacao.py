@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from app import config, llm, prompts
 from app.anonimizacao import anonimizar_texto
+from app.conformidade import validar_cnpj
 
 log = logging.getLogger(__name__)
 
@@ -111,8 +112,10 @@ def perguntar_llm_mesmo_documento(fim_anterior: str, inicio_atual: str) -> bool 
 def segmentar(textos: list[str]) -> list[Documento]:
     """Cascata: branco/carimbo herda -> 'Página k de N' -> CNPJ + TF-IDF -> ambíguo (Jev; sem resposta abre e marca).
 
-    Sem paginação: similaridade alta continua; CNPJ diferente abre; similaridade baixa abre, exceto com o
-    mesmo CNPJ, que vai para a pergunta ao Jev junto com a faixa ambígua."""
+    Sem paginação: dois CNPJs válidos (dígitos verificadores) e diferentes abrem documento, mesmo com similaridade
+    alta (sem perguntar ao Jev); com similaridade alta e algum CNPJ inválido (provável erro de OCR), continua.
+    Abaixo da similaridade alta, CNPJ diferente abre; similaridade baixa abre, exceto com o mesmo CNPJ, que vai
+    para a pergunta ao Jev junto com a faixa ambígua."""
     if not textos:
         return []
     vetores = _vetores_tfidf(textos)
@@ -137,7 +140,9 @@ def segmentar(textos: list[str]) -> list[Documento]:
         else:
             sim = _cosseno(vetores[ref], vetores[i])
             conhecidos = cnpjs[ref] is not None and cnpjs[i] is not None
-            if sim >= config.SEG_SIM_ALTO:
+            if conhecidos and cnpjs[ref] != cnpjs[i] and validar_cnpj(cnpjs[ref]) and validar_cnpj(cnpjs[i]):
+                inicios.append((i, False))  # duas empresas reais diferentes: abre mesmo com similaridade alta
+            elif sim >= config.SEG_SIM_ALTO:
                 pass
             elif conhecidos and cnpjs[ref] != cnpjs[i]:
                 inicios.append((i, False))  # outra empresa: abre, sem perguntar
