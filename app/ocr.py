@@ -5,9 +5,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import psycopg
+import redis
 from pdf2image import convert_from_path, pdfinfo_from_path
 
 from app import config
+from app.filas import enfileirar
+from app.segmentacao import segmentar
 
 log = logging.getLogger(__name__)
 DPI = 150
@@ -35,8 +38,56 @@ def _estado(lote_id: int, estado: str) -> None:
         conn.execute("UPDATE lote SET estado = %s WHERE id = %s", (estado, lote_id))
 
 
+def _reenfileirar_pendentes(lote_id: int) -> None:
+    """Lote já em 'classificando': cobre a queda entre o commit da segmentação e o enfileiramento."""
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        ids = [r[0] for r in conn.execute(
+            "SELECT id FROM documento WHERE lote_id = %s AND estado = 'segmentado' ORDER BY ordem", (lote_id,))]
+    _enfileirar_classificacao(ids)
+
+
+def _enfileirar_classificacao(ids: list[int]) -> None:
+    r = redis.Redis.from_url(config.REDIS_URL, decode_responses=True)
+    for id_ in ids:
+        enfileirar(r, config.FILA_CLASSIFICAR, {"documento_id": id_})
+
+
+def segmentar_e_gravar(lote_id: int) -> list[int]:
+    """Em uma única transação: recria os documentos do lote, vincula as páginas, define docs_pendentes
+    e muda o lote para 'classificando'. Devolve os ids dos documentos (vazio se outro worker já fez)."""
+    with psycopg.connect(config.DATABASE_URL) as conn:  # o with faz commit único ao sair
+        estado = conn.execute("SELECT estado FROM lote WHERE id = %s FOR UPDATE", (lote_id,)).fetchone()[0]
+        if estado in ("classificando", "concluido"):
+            return []
+        textos = [t or "" for (t,) in conn.execute(
+            "SELECT texto FROM pagina WHERE lote_id = %s ORDER BY numero", (lote_id,))]
+        conn.execute("DELETE FROM documento WHERE lote_id = %s", (lote_id,))  # refazer não duplica
+        ids = []
+        for ordem, d in enumerate(segmentar(textos), start=1):
+            id_ = conn.execute(
+                "INSERT INTO documento (lote_id, ordem, pagina_ini, pagina_fim, segmentacao_ambigua) "
+                "VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                (lote_id, ordem, d.pagina_ini, d.pagina_fim, d.ambiguo),
+            ).fetchone()[0]
+            conn.execute(
+                "UPDATE pagina SET documento_id = %s WHERE lote_id = %s AND numero BETWEEN %s AND %s",
+                (id_, lote_id, d.pagina_ini, d.pagina_fim),
+            )
+            ids.append(id_)
+        conn.execute("UPDATE lote SET docs_pendentes = %s, estado = 'classificando' WHERE id = %s",
+                     (len(ids), lote_id))
+    return ids
+
+
 def processar_lote(payload: dict) -> None:
     lote_id = payload["lote_id"]
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        estado = conn.execute("SELECT estado FROM lote WHERE id = %s", (lote_id,)).fetchone()[0]
+    if estado == "concluido":
+        return
+    if estado == "classificando":
+        _reenfileirar_pendentes(lote_id)
+        return
     pasta = Path(config.DATA_DIR) / f"lote_{lote_id}"
     pdf = pasta / "original.pdf"
     _estado(lote_id, "ocr")
@@ -51,10 +102,9 @@ def processar_lote(payload: dict) -> None:
                     "ON CONFLICT (lote_id, numero) DO UPDATE SET texto = EXCLUDED.texto",
                     (lote_id, numero, texto),
                 )
+        ids = segmentar_e_gravar(lote_id)
     except Exception:
         _estado(lote_id, "erro")  # o retry da fila volta o lote para 'ocr'
         raise
-    log.info("lote %s: OCR de %s páginas concluído", lote_id, total)
-    # PRÓXIMA ETAPA (segmentação): ler as páginas de `pagina`, criar `documento`, preencher
-    # pagina.documento_id, definir lote.docs_pendentes e enfileirar classificar_documento.
-    # O lote permanece em 'ocr' por enquanto.
+    log.info("lote %s: OCR de %s páginas e segmentação em %s documentos", lote_id, total, len(ids))
+    _enfileirar_classificacao(ids)  # se cair antes daqui, o retry vê 'classificando' e reenfileira

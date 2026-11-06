@@ -27,6 +27,7 @@ CREATE TABLE documento (
     modelo          TEXT,
     versao_prompt   TEXT,
     probabilidades  JSONB,
+    segmentacao_ambigua BOOLEAN NOT NULL DEFAULT false,  -- fronteira inicial decidida na faixa ambígua
     CHECK (pagina_fim >= pagina_ini),
     UNIQUE (lote_id, ordem)
 );
