@@ -187,7 +187,13 @@ O score é apoio à auditoria, não parecer jurídico. A convenção coletiva e 
 
 ### Goal 7: Score de conformidade dos documentos
 
-Score de 0 a 100 **por lote**, tratando cada lote como o dossiê de uma pessoa. É separado do risco de ponto do Goal 6, que não entra nesta nota. Fica nos 7 tipos atuais. O cálculo é feito em código determinístico; os LLMs só extraem os dados.
+Score de 0 a 100 sobre a **empresa prestadora**: a terceirizada que fornece os funcionários para a tomadora. Um lote pode misturar empresas, então o lote não é a unidade. A empresa é identificada pelo CNPJ da prestadora, e seus documentos são reunidos entre lotes. É separado do risco de ponto do Goal 6, que não entra nesta nota. Fica nos 7 tipos atuais. O cálculo é feito em código determinístico; os LLMs só extraem os dados.
+
+**Três níveis, com a mesma fórmula e os mesmos pesos, redistribuindo os critérios que não se aplicam:**
+
+- **Por documento:** Validade e Consistência; Completude não se aplica.
+- **Por tipo:** presença do tipo (Completude, se obrigatório), mais Validade e Consistência dos documentos desse tipo.
+- **Geral da empresa:** os três critérios sobre todos os documentos.
 
 | Critério | Peso | Regra | Nota do critério |
 |---|---|---|---|
@@ -210,8 +216,20 @@ Score de 0 a 100 **por lote**, tratando cada lote como o dossiê de uma pessoa. 
 **Configuração, em um único módulo:** pesos, faixas, tipos obrigatórios e regras de validade.
 
 - Obrigatórios: `aso`, `contrato_trabalho`, `holerite`, `folha_pagamento` e `folha_ponto`. `atestado_medico` e `recibo_ferias` só existem quando há afastamento ou férias, então não contam como ausência.
-- Validade: `aso` e `contrato_trabalho` por prazo determinado. Confira o prazo do ASO na NR-7. Documento sem data legível fica pendente. A data de referência é registrada no resultado.
+- Validade: `aso` e `contrato_trabalho` por prazo determinado. Contrato por prazo indeterminado não se aplica, em vez de ficar pendente. Confira o prazo do ASO na NR-7. Documento sem data legível fica pendente. A data de referência é registrada no resultado.
+- Consistência: CNPJ e razão social são comparados entre os documentos da empresa. Nome, matrícula e data de admissão só são comparados entre documentos do mesmo funcionário (mesmo CPF), nunca entre pessoas diferentes.
+- `provisorio`: só com documento não analisado, obrigatório pendente ou critério inteiro pendente. Campo ausente aparece nas pendências, mas não marca o score como provisório.
 
-**Fluxo:** o Gemini extrai datas e campos de identificação (nome, CPF, matrícula, data de admissão) em JSON. O código normaliza, compara e calcula. Conferências de texto ambíguas, como variação de nome, podem usar `Noul` do Jev, seguindo a skill. Os dados extraídos ficam em `documento_campos`, e `GET /lotes/{id}/conformidade` devolve a nota por critério, o score, a classificação, os descontos e as pendências.
+**Identificação da empresa:** o Gemini extrai o CNPJ e a razão social da prestadora, e o código valida os dígitos verificadores. Documento sem CNPJ claro, com CNPJ inválido ou sem distinção entre prestadora e tomadora fica pendente, listado no lote, sem ser ligado a uma empresa por palpite.
 
-**Aceite:** testes cobrem cada regra e cada limite de faixa; em um lote sintético, a remoção de um obrigatório, um ASO vencido e um nome divergente geram os descontos esperados com o motivo; documento pendente não zera a nota. Não reporte métrica de acurácia sem gabarito.
+**Fluxo:** o Gemini extrai a empresa, as datas e os campos de identificação (nome, CPF, matrícula, data de admissão) em JSON, depois da classificação. A extração não participa do fan-in do lote. O código normaliza, compara e calcula. Conferências de texto ambíguas, como variação de nome, podem usar `Noul` do Jev, seguindo a skill. Os dados extraídos ficam em `documento_campos`.
+
+**Endpoints:**
+
+- `GET /empresas`: empresas com o score geral e a classificação.
+- `GET /empresas/{cnpj}/conformidade`: os três níveis, com notas por critério, classificação, descontos e pendências.
+- `GET /lotes/{id}/conformidade`: as empresas encontradas no lote e os documentos sem empresa.
+
+**Limitação conhecida:** a Completude por empresa só verifica se existe ao menos um documento de cada tipo obrigatório, não se cada funcionário tem o seu. O README deve registrar isso.
+
+**Aceite:** testes cobrem cada regra, os três níveis e cada limite de faixa; em lotes sintéticos, dois CNPJs no mesmo lote geram scores separados, a remoção de um obrigatório, um ASO vencido e um nome divergente do mesmo CPF geram os descontos esperados com o motivo, nomes de CPFs diferentes não geram divergência, e documento pendente não zera a nota. Não reporte métrica de acurácia sem gabarito.
