@@ -109,6 +109,7 @@ def test_falha_do_llm_na_segmentacao_nao_derruba_o_lote(lote_ambiguo):
 
 def test_chamada_noul_acontece_fora_da_transacao(lote_ambiguo, monkeypatch):
     """Durante a chamada de rede, outra conexão consegue o FOR UPDATE do lote (não há lock preso)."""
+    monkeypatch.setattr(config, "CLASSIFICADOR", "jev")  # em modo regras a pergunta nem sai
     visto = []
 
     def enviar(url, headers, corpo):
