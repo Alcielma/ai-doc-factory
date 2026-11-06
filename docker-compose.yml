@@ -76,6 +76,11 @@ services:
     command: python -m app.worker analisar_folha_ponto
     healthcheck: *worker-health
 
+  worker_extracao:
+    <<: *app
+    command: python -m app.worker extrair_campos
+    healthcheck: *worker-health
+
 volumes:
   pgdata:
   dados:

@@ -100,4 +100,13 @@ CREATE TABLE analise_ponto (
     versao_prompt_jev TEXT,
     custo           JSONB,                             -- usage do Jev e do Gemini
     atualizado_em   TIMESTAMPTZ NOT NULL DEFAULT now()
+
+-- Campos extraídos de cada documento (Goal 7). Um valor por (documento, campo); upsert.
+CREATE TABLE documento_campos (
+    documento_id    BIGINT NOT NULL REFERENCES documento(id) ON DELETE CASCADE,
+    campo           TEXT NOT NULL,
+    valor           TEXT NOT NULL,
+    origem          TEXT NOT NULL,                     -- quem gravou: modelo, humano, teste...
+    atualizado_em   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (documento_id, campo)
 );

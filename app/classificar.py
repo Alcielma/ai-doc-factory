@@ -84,3 +84,6 @@ def classificar_documento(payload: dict) -> None:
         _fan_in(conn, row[0])
     if decisao.estado == "classificado" and decisao.tipo == "folha_ponto":
         enfileirar_analise(doc_id)  # fora do fan-in e da transação; nunca levanta
+    # classificado e em_revisao: CNPJ e demais campos não dependem do tipo confirmado
+    from app.extracao import enfileirar_extracao  # import tardio: extracao importa este módulo
+    enfileirar_extracao(doc_id)
