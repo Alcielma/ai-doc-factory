@@ -200,6 +200,70 @@ def test_contagens_para_o_jev_separam_falta_pequena_de_falta_maior():
     assert c["registro"]["ponto_britanico"] == "inconclusivo" and c["horas_extras"]["dias_analisados"] == 2
 
 
+CONTRATO = [["08:00", "12:00"], ["13:00", "17:00"]]
+
+
+def test_horario_contratual_aplica_a_tolerancia_por_marcacao():
+    # entrada 6 min antes do contratual: dentro de 10 min no dia, mas acima de 5 por marcação -> conta
+    folha = [dia("2025-11-04", ("07:54", "12:00"), ("13:00", "17:00")), dia("2025-11-05", ("07:55", "12:00"), ("13:00", "17:00"))]
+    r = apurar_folha(folha, PERFIL, horario_contratual=CONTRATO)
+    assert [d["extras_min"] for d in r["dias"]] == [6, 0]  # 5 min exatos ainda é tolerado
+    assert r["tolerancia_por_marcacao"] == {"aplicada": True, "dias_com_horario_previsto": 2,
+                                            "dias_sem_horario_previsto": 0, "motivo_nao_aplicada": None}
+    sem = apurar_folha(folha, PERFIL)  # sem horário contratual: só o teto diário
+    assert [d["extras_min"] for d in sem["dias"]] == [0, 0]
+    assert sem["tolerancia_por_marcacao"]["aplicada"] is False
+    assert sem["tolerancia_por_marcacao"]["motivo_nao_aplicada"] == "sem_horario_contratual"
+
+
+def test_horario_contratual_com_numero_de_marcacoes_diferente_mantem_so_o_teto_diario():
+    folha = [dia("2025-11-04", ("07:54", "17:00")), regular("2025-11-05")]
+    r = apurar_folha(folha, PERFIL, horario_contratual=CONTRATO, intervalo_pre_assinalado=True)
+    t = r["tolerancia_por_marcacao"]
+    assert t["dias_com_horario_previsto"] == 1 and t["dias_sem_horario_previsto"] == 1 and t["aplicada"] is True
+    nada = apurar_folha([dia("2025-11-04", ("07:54", "17:00"))], PERFIL, horario_contratual=CONTRATO,
+                        intervalo_pre_assinalado=True)["tolerancia_por_marcacao"]
+    assert nada["aplicada"] is False and nada["motivo_nao_aplicada"] == "numero_de_marcacoes_diferente_do_horario_contratual"
+    ruim = apurar_folha([regular("2025-11-04")], PERFIL, horario_contratual=[["8h", "x"]])["tolerancia_por_marcacao"]
+    assert ruim["motivo_nao_aplicada"] == "horario_contratual_ilegivel"
+
+
+def _folha_com_extras():
+    # 04/11: 12 min de excesso (conta); 05/11: 8 min (tolerado). Bruto 20, com tolerância 12.
+    return [dia("2025-11-04", ("08:00", "12:00"), ("13:00", "17:12")), dia("2025-11-05", ("08:00", "12:00"), ("13:00", "17:08"))]
+
+
+def test_total_declarado_igual_ao_bruto_nao_e_divergencia_mesmo_diferindo_do_com_tolerancia():
+    r = apurar_folha(_folha_com_extras(), PERFIL, totais_declarados={"total_horas_min": 980, "horas_extras_min": 20})
+    t = r["totais"]
+    assert (t["extras_bruto_min"], t["extras_min"]) == (20, 12)
+    assert r["divergencias"] == []
+    d = r["declarados"]
+    assert d["extras_declarado_igual_ao_bruto"] is True and d["extras_declarado_igual_ao_com_tolerancia"] is False
+    assert d["comparado"] is True
+
+
+def test_total_declarado_diferente_gera_divergencia_com_campo_e_minutos():
+    r = apurar_folha(_folha_com_extras(), PERFIL, totais_declarados={"total_horas_min": 1000, "horas_extras_min": 30})
+    assert [(d["tipo"], d["campo"], d["minutos"], d["data"]) for d in r["divergencias"]] == [
+        ("total_declarado_divergente", "total_horas", 20, None), ("total_declarado_divergente", "horas_extras", 10, None)]
+
+
+def test_total_declarado_nulo_ou_ausente_nao_compara_e_tolerancia_configuravel(monkeypatch):
+    for decl in ({"total_horas_min": None, "horas_extras_min": None}, None, {"horas_extras_min": "03:00"}):
+        r = apurar_folha(_folha_com_extras(), PERFIL, totais_declarados=decl)
+        assert r["divergencias"] == [] and r["declarados"]["comparado"] is False
+    from app import ponto
+    monkeypatch.setitem(ponto.CONFIG_PONTO, "total_declarado_tolerancia_min", 15)
+    assert apurar_folha(_folha_com_extras(), PERFIL, totais_declarados={"horas_extras_min": 30})["divergencias"] == []
+
+
+def test_total_declarado_nao_e_comparado_com_dia_invalido():
+    folha = _folha_com_extras() + [dia("2025-11-06", ("08:00", None))]
+    r = apurar_folha(folha, PERFIL, totais_declarados={"total_horas_min": 1, "horas_extras_min": 1})
+    assert [d["tipo"] for d in r["divergencias"]] == ["marcacao_invalida"] and r["declarados"]["comparado"] is False
+
+
 def test_diferenca_com_gemini_registrada_e_vale_o_codigo():
     cod = apurar_folha([dia("2025-11-03", ("08:00", "12:00"), ("12:30", "20:30"))], PERFIL)
     gem = [{"tipo": "horas_extras_acima_limite", "data": "2025-11-03", "minutos": 150},
