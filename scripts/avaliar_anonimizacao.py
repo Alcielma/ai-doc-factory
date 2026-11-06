@@ -28,6 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app import anonimizacao  # noqa: E402
+from scripts.api_http import abrir  # noqa: E402
 
 
 def _norm(s: str) -> str:
@@ -36,7 +37,7 @@ def _norm(s: str) -> str:
 
 
 def _get(api: str, caminho: str):
-    with urllib.request.urlopen(api + caminho, timeout=60) as r:
+    with abrir(api + caminho, timeout=60) as r:
         return json.load(r)
 
 
@@ -46,7 +47,7 @@ def _enviar(api: str, pdf: Path) -> int:
              "Content-Type: application/pdf\r\n\r\n").encode() + pdf.read_bytes() + f"\r\n--{limite}--\r\n".encode()
     req = urllib.request.Request(api + "/lotes", data=corpo, headers={
         "Content-Type": f"multipart/form-data; boundary={limite}"})
-    with urllib.request.urlopen(req, timeout=120) as r:
+    with abrir(req, timeout=120) as r:
         return json.load(r)["lote_id"]
 
 
