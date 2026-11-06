@@ -47,6 +47,36 @@ CREATE INDEX pagina_documento_idx ON pagina (documento_id);
 CREATE INDEX pagina_texto_fts_idx ON pagina
     USING GIN (to_tsvector('portuguese', coalesce(texto, '')));
 
+-- Perfil de jornada (Goal 6). Cada parâmetro guarda valor e base legal. Valores de referência da CLT,
+-- sem convenção coletiva nem acordo de compensação, que podem alterá-los. Apoio à auditoria, não parecer jurídico.
+CREATE TABLE perfil_jornada (
+    id          BIGSERIAL PRIMARY KEY,
+    perfil      TEXT NOT NULL,
+    parametro   TEXT NOT NULL,
+    valor       NUMERIC NOT NULL,
+    unidade     TEXT NOT NULL,                         -- min, pct
+    base_legal  TEXT NOT NULL,
+    UNIQUE (perfil, parametro)
+);
+
+INSERT INTO perfil_jornada (perfil, parametro, valor, unidade, base_legal) VALUES
+    ('clt_padrao', 'jornada_diaria_min',           480,  'min', 'CF art. 7º, XIII; CLT art. 58'),
+    ('clt_padrao', 'jornada_semanal_min',          2640, 'min', 'CF art. 7º, XIII; CLT art. 58'),
+    ('clt_padrao', 'tolerancia_marcacao_min',      5,    'min', 'CLT art. 58, § 1º'),
+    ('clt_padrao', 'tolerancia_dia_min',           10,   'min', 'CLT art. 58, § 1º'),
+    ('clt_padrao', 'extras_max_dia_min',           120,  'min', 'CLT art. 59'),
+    ('clt_padrao', 'adicional_extra_pct',          50,   'pct', 'CF art. 7º, XVI'),
+    ('clt_padrao', 'interjornada_min',             660,  'min', 'CLT art. 66'),
+    ('clt_padrao', 'descanso_semanal_min',         1440, 'min', 'CLT art. 67'),
+    ('clt_padrao', 'intervalo_longo_acima_min',    360,  'min', 'CLT art. 71'),
+    ('clt_padrao', 'intervalo_longo_min',          60,   'min', 'CLT art. 71'),
+    ('clt_padrao', 'intervalo_curto_acima_min',    240,  'min', 'CLT art. 71, § 1º'),
+    ('clt_padrao', 'intervalo_curto_min',          15,   'min', 'CLT art. 71, § 1º'),
+    ('clt_padrao', 'noturno_inicio_min',           1320, 'min', 'CLT art. 73, § 2º'),
+    ('clt_padrao', 'noturno_fim_min',              300,  'min', 'CLT art. 73, § 2º'),
+    ('clt_padrao', 'hora_noturna_min',             52.5, 'min', 'CLT art. 73, § 1º'),
+    ('clt_padrao', 'adicional_noturno_pct',        20,   'pct', 'CLT art. 73');
+
 -- Campos extraídos de cada documento (Goal 7). Um valor por (documento, campo); upsert.
 CREATE TABLE documento_campos (
     documento_id    BIGINT NOT NULL REFERENCES documento(id) ON DELETE CASCADE,
