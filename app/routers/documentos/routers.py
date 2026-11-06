@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Response
 
 from app.routers.documentos import actions
+from app.routers.documentos.schemas import AtualizacaoCampos
 from app.routers.revisao.schemas import Revisao
 
 router = APIRouter(tags=["Documentos"])
@@ -16,6 +17,12 @@ def listar_documentos(empresa_id: int | None = None, falhou: bool | None = None)
 def atualizar_tipo(documento_id: int, corpo: Revisao):
     """Corrige o tipo (documento fora de 'segmentado' e 'erro'); vira 'revisado'."""
     return actions.atualizar_tipo(documento_id, corpo)
+
+
+@router.put("/documentos/{documento_id}/campos")
+def atualizar_campos(documento_id: int, corpo: AtualizacaoCampos):
+    """Corrige campos extraídos: string não vazia grava com origem 'humano'; null remove. Devolve o documento."""
+    return actions.atualizar_campos(documento_id, corpo)
 
 
 @router.delete("/documentos/{documento_id}", status_code=204)

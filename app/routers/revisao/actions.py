@@ -5,19 +5,23 @@ from app import config
 from app.analise import enfileirar_analise
 from app.extracao import enfileirar_extracao
 from app.routers import r
+from app.routers.documentos.actions import campos_por_documento, extras_documento
 from app.routers.revisao.schemas import Revisao
 
 
 def fila_revisao() -> list[dict]:
     with psycopg.connect(config.DATABASE_URL) as conn:
         docs = conn.execute(
-            "SELECT id, lote_id, tipo, confianca, motivo_revisao, pagina_ini FROM documento "
-            "WHERE estado = 'em_revisao' ORDER BY lote_id, ordem"
+            "SELECT d.id, d.lote_id, d.tipo, d.confianca, d.motivo_revisao, d.pagina_ini, d.pagina_fim, "
+            "l.nome_arquivo, l.criado_em FROM documento d JOIN lote l ON l.id = d.lote_id "
+            "WHERE d.estado = 'em_revisao' ORDER BY d.lote_id, d.ordem"
         ).fetchall()
+        campos = campos_por_documento(conn, [d[0] for d in docs])
     return [
         {"id": i, "lote_id": l, "tipo_sugerido": t, "confianca": c, "motivo": m,
-         "imagem_url": f"/lotes/{l}/paginas/{p}/imagem"}
-        for i, l, t, c, m, p in docs
+         "imagem_url": f"/lotes/{l}/paginas/{p}/imagem", "pagina_ini": p, "pagina_fim": pf,
+         **extras_documento(campos.get(i, {}), nome, p, pf, criado)}
+        for i, l, t, c, m, p, pf, nome, criado in docs
     ]
 
 

@@ -1,15 +1,18 @@
 """Configuração única: tipos documentais, limiares e conexões (tudo vindo do ambiente)."""
 import os
 
-TIPOS = (
-    "aso",
-    "folha_pagamento",
-    "folha_ponto",
-    "holerite",
-    "recibo_ferias",
-    "atestado_medico",
-    "contrato_trabalho",
-)
+# Fonte única dos tipos documentais: slug -> rótulo e ícone (usado por GET /tipos). A ordem é a de exibição.
+# Para adicionar um tipo, basta uma entrada aqui. Ícones aceitos: car, hash, idcard, home, file, briefcase.
+TIPOS_INFO = {
+    "aso": {"nome": "ASO (Atestado de Saúde Ocupacional)", "icone": "file"},
+    "folha_pagamento": {"nome": "Folha de pagamento", "icone": "briefcase"},
+    "folha_ponto": {"nome": "Folha de ponto", "icone": "hash"},
+    "holerite": {"nome": "Holerite", "icone": "idcard"},
+    "recibo_ferias": {"nome": "Recibo de férias", "icone": "home"},
+    "atestado_medico": {"nome": "Atestado médico", "icone": "file"},
+    "contrato_trabalho": {"nome": "Contrato de trabalho", "icone": "briefcase"},
+}
+TIPOS = tuple(TIPOS_INFO)
 
 # Tipo atribuído quando a confiança fica abaixo de CONF_MIN. Fica fora de TIPOS de propósito:
 # não é uma classe válida para a correção humana.

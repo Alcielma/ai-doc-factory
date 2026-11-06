@@ -67,7 +67,7 @@ def test_listar_por_empresa_agrupa_e_ordena(banco):
     assert [g["tipo"] for g in grupos] == ["aso", "holerite", "desconhecido", "sem_tipo"]
     assert [g["total"] for g in grupos] == [2, 1, 1, 1]
     assert _ids(r) == {"aso": [b, x], "holerite": [a], "desconhecido": [c], "sem_tipo": [d]}
-    assert set(grupos[0]["documentos"][0]) == {"id", "lote_id", "ordem", "pagina_ini", "pagina_fim", "estado",
+    assert set(grupos[0]["documentos"][0]) >= {"id", "lote_id", "ordem", "pagina_ini", "pagina_fim", "estado",
                                                "tipo", "confianca", "empresa_id"}
     assert grupos[0]["documentos"][0]["empresa_id"] == e
 

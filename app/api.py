@@ -10,6 +10,7 @@ from app.routers.empresas.routers import router as empresas
 from app.routers.lotes.routers import router as lotes
 from app.routers.revisao.routers import router as revisao
 from app.routers.saude.routers import router as saude
+from app.routers.tipos.routers import router as tipos
 
 app = FastAPI(title="Document AI Factory")
 app.add_middleware(
@@ -18,5 +19,5 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-for router in (saude, lotes, busca, documentos, revisao, empresas, cadastro_empresas):
+for router in (saude, lotes, busca, documentos, revisao, empresas, cadastro_empresas, tipos):
     app.include_router(router)

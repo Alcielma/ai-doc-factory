@@ -5,6 +5,7 @@ from app import config
 from app.analise import enfileirar_analise
 from app.extracao import enfileirar_extracao
 from app.routers import r
+from app.routers.documentos.schemas import AtualizacaoCampos
 from app.routers.revisao.schemas import Revisao
 
 _COLUNAS_ANALISE = ("estado", "erro", "perfil", "marcacoes", "intervalo_pre_assinalado", "totais", "divergencias",
@@ -13,23 +14,44 @@ _COLUNAS_ANALISE = ("estado", "erro", "perfil", "marcacoes", "intervalo_pre_assi
                     "custo", "atualizado_em")
 
 
+def campos_por_documento(conn, ids: list[int]) -> dict[int, dict]:
+    """documento_id -> {campo: valor}, em uma consulta só."""
+    if not ids:
+        return {}
+    out: dict[int, dict] = {}
+    for doc_id, campo, valor in conn.execute(
+            "SELECT documento_id, campo, valor FROM documento_campos WHERE documento_id = ANY(%s) ORDER BY campo",
+            (ids,)):
+        out.setdefault(doc_id, {})[campo] = valor
+    return out
+
+
+def extras_documento(campos: dict, nome_arquivo: str, ini: int, fim: int, criado_em) -> dict:
+    """Campos aditivos expostos pelas respostas de documento."""
+    return {"campos": campos, "pessoa": campos.get("nome"), "nome_arquivo": nome_arquivo,
+            "n_paginas": fim - ini + 1, "processado_em": criado_em}
+
+
 def obter_documento(documento_id: int) -> dict:
     with psycopg.connect(config.DATABASE_URL) as conn:
         d = conn.execute(
-            "SELECT id, lote_id, ordem, pagina_ini, pagina_fim, estado, tipo, confianca, segmentacao_ambigua, "
-            "tipo_original, revisor, revisado_em, motivo_revisao, probabilidades "
-            "FROM documento WHERE id = %s", (documento_id,)
+            "SELECT d.id, d.lote_id, d.ordem, d.pagina_ini, d.pagina_fim, d.estado, d.tipo, d.confianca, "
+            "d.segmentacao_ambigua, d.tipo_original, d.revisor, d.revisado_em, d.motivo_revisao, d.probabilidades, "
+            "l.nome_arquivo, l.criado_em "
+            "FROM documento d JOIN lote l ON l.id = d.lote_id WHERE d.id = %s", (documento_id,)
         ).fetchone()
         if d is None:
             raise HTTPException(404, "documento não encontrado")
         paginas = conn.execute(
             "SELECT numero, texto FROM pagina WHERE documento_id = %s ORDER BY numero", (documento_id,)
         ).fetchall()
+        campos = campos_por_documento(conn, [documento_id]).get(documento_id, {})
     return {
         "id": d[0], "lote_id": d[1], "ordem": d[2], "pagina_ini": d[3], "pagina_fim": d[4], "estado": d[5],
         "tipo": d[6], "confianca": d[7], "segmentacao_ambigua": d[8],
         "tipo_original": d[9], "revisor": d[10], "revisado_em": d[11], "motivo_revisao": d[12],
         "probabilidades": d[13],
+        **extras_documento(campos, d[14], d[3], d[4], d[15]),
         "paginas": [
             {"numero": n, "imagem_url": f"/lotes/{d[1]}/paginas/{n}/imagem", "texto": t}
             for n, t in paginas
@@ -71,14 +93,17 @@ def listar_documentos(empresa_id: int | None = None, falhou: bool | None = None)
             raise HTTPException(404, "empresa não encontrada")
         rows = conn.execute(
             "SELECT d.id, d.lote_id, d.ordem, d.pagina_ini, d.pagina_fim, d.estado, d.tipo, d.confianca, "
-            f"l.empresa_id FROM documento d JOIN lote l ON l.id = d.lote_id {where} ORDER BY d.lote_id, d.ordem",
+            f"l.empresa_id, l.nome_arquivo, l.criado_em FROM documento d JOIN lote l ON l.id = d.lote_id {where} "
+            "ORDER BY d.lote_id, d.ordem",
             args,
         ).fetchall()
+        campos = campos_por_documento(conn, [r_[0] for r_ in rows])
     grupos: dict[str, list] = {}
-    for id_, lote_id, ordem, ini, fim, estado, tipo, conf, emp in rows:
+    for id_, lote_id, ordem, ini, fim, estado, tipo, conf, emp, nome_arq, criado in rows:
         grupos.setdefault(tipo or SEM_TIPO, []).append(
             {"id": id_, "lote_id": lote_id, "ordem": ordem, "pagina_ini": ini, "pagina_fim": fim,
-             "estado": estado, "tipo": tipo, "confianca": conf, "empresa_id": emp})
+             "estado": estado, "tipo": tipo, "confianca": conf, "empresa_id": emp,
+             **extras_documento(campos.get(id_, {}), nome_arq, ini, fim, criado)})
     ordem_tipos = [*config.TIPOS, config.TIPO_DESCONHECIDO, SEM_TIPO]
     # tipo fora da lista (não esperado) vai depois dos conhecidos, antes de sem_tipo
     chaves = sorted(grupos, key=lambda t: (ordem_tipos.index(t) if t in ordem_tipos else len(config.TIPOS) + 1, t))
@@ -117,3 +142,21 @@ def excluir_documento(documento_id: int) -> None:
         if row[0] not in ("concluido", "erro"):
             raise HTTPException(409, f"lote em andamento (estado '{row[0]}'); aguarde a conclusão para excluir")
         conn.execute("DELETE FROM documento WHERE id = %s", (documento_id,))
+
+
+def atualizar_campos(documento_id: int, corpo: AtualizacaoCampos) -> dict:
+    """String não vazia -> upsert com origem 'humano'; null -> remove o campo. Qualquer estado de documento."""
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        if conn.execute("SELECT 1 FROM documento WHERE id = %s FOR UPDATE", (documento_id,)).fetchone() is None:
+            raise HTTPException(404, "documento não encontrado")
+        for nome, valor in corpo.campos.items():
+            if valor is None:
+                conn.execute("DELETE FROM documento_campos WHERE documento_id = %s AND campo = %s",
+                             (documento_id, nome))
+            else:
+                conn.execute(
+                    "INSERT INTO documento_campos (documento_id, campo, valor, origem) VALUES (%s, %s, %s, 'humano') "
+                    "ON CONFLICT (documento_id, campo) DO UPDATE SET valor = EXCLUDED.valor, "
+                    "origem = EXCLUDED.origem, atualizado_em = now()",
+                    (documento_id, nome, valor.strip()))
+    return obter_documento(documento_id)
