@@ -113,16 +113,17 @@ def jev_sim_nao(state: dict, pergunta: str, criterios: dict | None = None) -> fl
     return _prob_noul(resp)
 
 
-def gemini_gerar(prompt: str, schema: dict, imagem_png: bytes | None = None) -> dict:
-    """generateContent do Gemini com resposta JSON estruturada. Devolve o JSON completo (inclui modelVersion)."""
+def gemini_gerar(prompt: str, schema: dict, imagem_png: bytes | None = None, *, imagens=(), modelo: str | None = None) -> dict:
+    """generateContent do Gemini com resposta JSON estruturada. Devolve o JSON completo (inclui modelVersion).
+    imagens: PNGs extras (várias páginas); modelo: sobrescreve config.GEMINI_MODEL."""
     partes = [{"text": prompt}]
-    if imagem_png:
-        partes.append({"inlineData": {"mimeType": "image/png", "data": base64.b64encode(imagem_png).decode()}})
+    for png in ([imagem_png] if imagem_png else []) + list(imagens):
+        partes.append({"inlineData": {"mimeType": "image/png", "data": base64.b64encode(png).decode()}})
     corpo = {
         "contents": [{"parts": partes}],
         "generationConfig": {"responseMimeType": "application/json", "responseSchema": schema},
     }
-    modelo = config.GEMINI_MODEL
+    modelo = modelo or config.GEMINI_MODEL
     headers = {"x-goog-api-key": config.GEMINI_API_KEY}
     return _chamar_com_cache(modelo, GEMINI_URL.format(modelo=modelo), headers, corpo, texto_gemini)
 
