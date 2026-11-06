@@ -157,7 +157,7 @@ def main() -> None:
               f"({100 * total['token_sobrou'] / ok:.1f}%)")
     print(f"CPFs válidos no texto original: {total['cpfs_originais']}; sobrando após anonimizar: {total['cpfs_sobrando']}")
     print(f"termos de tipo documental apagados por engano: {sum(perdidos.values())} {perdidos or ''}")
-    print("conjunto de ajuste, não é métrica final")
+    print("dados sintéticos: vale só para o conjunto informado nos argumentos")
 
 
 if __name__ == "__main__":
