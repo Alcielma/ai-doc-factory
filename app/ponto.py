@@ -23,6 +23,12 @@ CONFIG_PONTO = {
     "conf_min_dimensao": 0.5,          # confiança mínima do Jev por dimensão no score
 }
 
+# Vocabulário único de tipos de divergência (o Gemini é instruído a usar exatamente estes nomes).
+TIPOS_DIVERGENCIA = (
+    "horas_extras_acima_limite", "semana_acima_limite", "intervalo_intrajornada_insuficiente",
+    "interjornada_insuficiente", "descanso_semanal_ausente", "marcacao_invalida",
+)
+
 BASE_LEGAL_REGISTRO = "CLT art. 74; Portaria MTP 671/2021"
 
 
@@ -223,9 +229,11 @@ def apurar_folha(marcacoes, perfil, previstos=None, intervalo_pre_assinalado=Fal
     # (dia de folga = data presente com pares vazios). Maior intervalo sem trabalho dentro da janela
     # segunda 00:00 -> segunda seguinte 00:00; descanso que atravessa a semana é cortado na borda
     # (limitação conhecida). Não verifica se o descanso cai no domingo.
+    avaliadas = 0
     for seg, ds in sorted(semanas.items()):
         if len(ds) < 7:
             continue
+        avaliadas += 1
         ini = datetime.combine(seg, time())
         fim = ini + timedelta(days=7)
         spans = sorted(s for d in ds for s in d["pares"])
@@ -251,7 +259,7 @@ def apurar_folha(marcacoes, perfil, previstos=None, intervalo_pre_assinalado=Fal
     }
     return {"dias": lista, "totais": totais, "divergencias": divs,
             "intervalo_pre_assinalado": bool(intervalo_pre_assinalado),
-            "intervalos_nao_verificados": nao_verificados}
+            "intervalos_nao_verificados": nao_verificados, "semanas_avaliadas_descanso": avaliadas}
 
 
 # ---------------------------------------------------------------- ponto britânico
@@ -347,3 +355,48 @@ def score_geral(respostas_jev, conf_min=None):
     indeterminadas = [k for k, v in dims.items() if v["indeterminada"]]
     return {"score_geral": max(normalizados) if normalizados else None, "dimensoes": dims,
             "indeterminadas": indeterminadas, "requer_revisao": bool(indeterminadas) or not dims}
+
+
+# ---------------------------------------------------------------- contagens para o Jev
+
+def resumir_contagens(apuracao, britanico):
+    """Contagens por dimensão, TODAS calculadas aqui: o Jev só julga a situação, não conta."""
+    divs = apuracao["divergencias"]
+
+    def de(tipo):
+        return [d for d in divs if d["tipo"] == tipo]
+
+    def maior(lista):
+        return max((d["minutos"] for d in lista), default=0)
+
+    validos = len(apuracao["dias"])
+    invalidos = apuracao["totais"]["dias_invalidos"]
+    extras, semanas = de("horas_extras_acima_limite"), de("semana_acima_limite")
+    intra, inter = de("intervalo_intrajornada_insuficiente"), de("interjornada_insuficiente")
+    sem_descanso = de("descanso_semanal_ausente")
+    if britanico.get("sinal_risco") is None:
+        sinal = "inconclusivo"
+    else:
+        sinal = "sinal_de_ponto_britanico" if britanico["sinal_risco"] else "sem_sinal"
+    return {
+        "horas_extras": {
+            "dias_analisados": validos, "dias_acima_do_limite_diario": len(extras),
+            "fracao_dos_dias_acima_do_limite": round(len(extras) / validos, 2) if validos else 0,
+            "maior_excesso_diario_min": maior(extras), "semanas_acima_de_44h": len(semanas),
+            "total_horas_extras_min": apuracao["totais"]["extras_min"],
+        },
+        "intervalos": {
+            "dias_analisados": validos, "dias_com_intervalo_intrajornada_insuficiente": len(intra),
+            "maior_falta_de_intervalo_min": maior(intra),
+            "dias_com_interjornada_menor_que_11h": len(inter), "maior_falta_de_interjornada_min": maior(inter),
+            "dias_com_intervalo_nao_verificado": len(apuracao.get("intervalos_nao_verificados", [])),
+        },
+        "descanso": {
+            "semanas_completas_avaliadas": apuracao.get("semanas_avaliadas_descanso", 0),
+            "semanas_sem_descanso_de_24h": len(sem_descanso), "maior_falta_de_descanso_min": maior(sem_descanso),
+        },
+        "registro": {
+            "dias_com_marcacao_valida": validos, "dias_com_marcacao_invalida": invalidos,
+            "ponto_britanico": sinal, "fracao_de_dias_com_horario_uniforme": britanico.get("fracao_uniforme"),
+        },
+    }
