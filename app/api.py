@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, field_validator
 
 from app import conformidade, config
-from app.campos import campos_do_lote
+from app.extracao import enfileirar_extracao
 from app.filas import enfileirar
 from app.imagem import ArquivoInvalido, imagem_para_pdf
 
@@ -175,6 +175,7 @@ def revisar_documento(documento_id: int, revisao: Revisao):
             if estado is None:
                 raise HTTPException(404, "documento não encontrado")
             raise HTTPException(409, f"documento em estado '{estado[0]}' não aceita revisão")
+    enfileirar_extracao(documento_id, r)  # depois do commit; nunca levanta
     return {"id": row[0], "estado": row[1], "tipo": row[2], "tipo_original": row[3],
             "revisor": row[4], "revisado_em": row[5]}
 
@@ -187,15 +188,60 @@ def imagem_pagina(lote_id: int, numero: int):
     return FileResponse(png, media_type="image/png")
 
 
+def _carregar_conformidade(conn):
+    """Todos os documentos e campos: a empresa reúne documentos de vários lotes."""
+    docs = [{"id": i, "lote_id": l, "tipo": t, "estado": e} for i, l, t, e in conn.execute(
+        "SELECT id, lote_id, tipo, estado FROM documento ORDER BY lote_id, ordem")]
+    campos: dict[int, dict[str, str]] = {}
+    for doc, campo, valor in conn.execute("SELECT documento_id, campo, valor FROM documento_campos"):
+        campos.setdefault(doc, {})[campo] = valor
+    return docs, campos
+
+
+def _resumo(cnpj: str, res: dict) -> dict:
+    g = res["geral"]
+    return {"cnpj": cnpj, "razao_social": res["razao_social"], "score": g["score"],
+            "classificacao": g["classificacao"], "provisorio": g["provisorio"]}
+
+
+def _empresas():
+    with psycopg.connect(config.DATABASE_URL) as conn:
+        docs, campos = _carregar_conformidade(conn)
+    empresas, sem = conformidade.agrupar_empresas(docs, campos)
+    hoje = date.today()
+    return {c: conformidade.calcular_empresa(ds, campos, hoje, sem) for c, ds in empresas.items()}, sem, docs
+
+
+@app.get("/empresas")
+def listar_empresas():
+    """Empresas prestadoras (por CNPJ validado) com score geral e classificação."""
+    resultados, _, _ = _empresas()
+    return [_resumo(c, r) for c, r in sorted(resultados.items())]
+
+
+@app.get("/empresas/{cnpj:path}/conformidade")
+def conformidade_empresa(cnpj: str):
+    """Três níveis (geral, por tipo, por documento). Aceita o CNPJ com ou sem pontuação."""
+    chave = conformidade.validar_cnpj(cnpj)
+    resultados, _, _ = _empresas()
+    if chave is None or chave not in resultados:
+        raise HTTPException(404, "empresa não encontrada")
+    return {"cnpj": chave, **resultados[chave]}
+
+
 @app.get("/lotes/{lote_id}/conformidade")
 def conformidade_lote(lote_id: int):
-    """Score de conformidade calculado a partir do estado atual (inclui correções humanas)."""
+    """Empresas encontradas no lote (com o score geral de cada uma) e documentos sem empresa."""
     with psycopg.connect(config.DATABASE_URL) as conn:
         if conn.execute("SELECT 1 FROM lote WHERE id = %s", (lote_id,)).fetchone() is None:
             raise HTTPException(404, "lote não encontrado")
-        docs = conn.execute(
-            "SELECT id, tipo, estado FROM documento WHERE lote_id = %s ORDER BY ordem", (lote_id,)
-        ).fetchall()
-        campos = campos_do_lote(conn, lote_id)
-    documentos = [{"id": i, "tipo": t, "estado": e} for i, t, e in docs]
-    return {"lote_id": lote_id, **conformidade.calcular(documentos, campos, date.today())}
+    resultados, sem, docs = _empresas()
+    ids_lote = {d["id"] for d in docs if d["lote_id"] == lote_id}
+    empresas = []
+    for cnpj, res in sorted(resultados.items()):
+        nesse_lote = sorted(i for i in res["por_documento"] if i in ids_lote)
+        if nesse_lote:
+            empresas.append({**_resumo(cnpj, res), "documentos": nesse_lote})
+    return {"lote_id": lote_id, "empresas": empresas,
+            "sem_empresa": [{"documento": s["id"], "tipo": s["tipo"], "estado": s["estado"], "motivo": s["motivo"]}
+                            for s in sem if s["lote_id"] == lote_id]}
